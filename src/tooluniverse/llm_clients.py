@@ -89,7 +89,7 @@ class AzureOpenAIClient(BaseLLMClient):
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OPENAI_API_KEY not set")
-        self.client = self.OpenAI(api_key=api_key)
+        self.client = OpenAI(api_key=api_key)
         self.api_version = resolved_version
 
         # Load env overrides for model limits (JSON dict of {prefix: {max_output, context_window}})
