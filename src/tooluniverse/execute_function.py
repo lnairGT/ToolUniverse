@@ -354,6 +354,12 @@ class ToolUniverse:
             "TOOLUNIVERSE_STRICT_VALIDATION", "false"
         ).lower() in ("true", "1", "yes")
 
+        # Initialize lenient type coercion feature
+        # Default: True for better user experience
+        self.lenient_type_coercion = os.getenv(
+            "TOOLUNIVERSE_COERCE_TYPES", "true"
+        ).lower() in ("true", "1", "yes")
+
         # Initialize dynamic tools namespace
         self.tools = ToolNamespace(self)
 
@@ -563,8 +569,9 @@ class ToolUniverse:
             for key in sorted(all_missing_keys):
                 f.write(f"{key}=your_api_key_here\n\n")
 
-        self.logger.info(f"Generated API key template: {output_file}")
-        self.logger.info("Copy this file to .env and fill in your API keys")
+        self.logger.info(
+            f"Generated API key template: {output_file}. Copy this file to .env and fill in your API keys"
+        )
 
     def _create_hook_config_from_type(self, hook_type):
         """
@@ -966,8 +973,10 @@ class ToolUniverse:
 
         # Generate template for missing API keys
         if len(all_missing_keys) > 0:
-            warning(f"\nMissing API keys: {', '.join(all_missing_keys)}")
-            info("Generating .env.template file with missing API keys...")
+            warning(
+                f"Some tools will not be loaded due to missing API keys: {', '.join(all_missing_keys)}"
+            )
+            # info("Generating .env.template file with missing API keys...")
             self.generate_env_template(all_missing_keys)
 
     def _load_auto_discovered_configs(self):
@@ -1395,8 +1404,12 @@ class ToolUniverse:
             # Validate tools have required fields
             valid_tools = []
             for tool in tools_in_file:
+                # Validate that tool is a dict, has "name" field, and name is a string
                 if isinstance(tool, dict) and "name" in tool:
-                    valid_tools.append(tool)
+                    name_value = tool["name"]
+                    # Ensure name is a string (not a dict/object) - this filters out schema files
+                    if isinstance(name_value, str):
+                        valid_tools.append(tool)
 
             return valid_tools
 
@@ -1419,7 +1432,13 @@ class ToolUniverse:
         for _category, file_path in self.tool_files.items():
             tools_in_category = self._read_tools_from_file(file_path)
             all_tools.extend(tools_in_category)
-            all_tool_names.update([tool["name"] for tool in tools_in_category])
+            # Only add string names to the set (filter out any non-string names as extra safety)
+            tool_names = [
+                tool["name"]
+                for tool in tools_in_category
+                if isinstance(tool.get("name"), str)
+            ]
+            all_tool_names.update(tool_names)
 
         # Also include remote tools
         try:
@@ -1432,7 +1451,13 @@ class ToolUniverse:
                     remote_tools = self._read_tools_from_file(fpath)
                     if remote_tools:
                         all_tools.extend(remote_tools)
-                        all_tool_names.update([tool["name"] for tool in remote_tools])
+                        # Only add string names to the set (filter out any non-string names as extra safety)
+                        tool_names = [
+                            tool["name"]
+                            for tool in remote_tools
+                            if isinstance(tool.get("name"), str)
+                        ]
+                        all_tool_names.update(tool_names)
         except Exception as e:
             warning(f"Warning: Failed to scan remote tools directory: {e}")
 
@@ -1456,11 +1481,17 @@ class ToolUniverse:
             warning(f"Warning: Data directory not found: {data_dir}")
             return all_tools, all_tool_names
 
-        # Recursively find all JSON files
+        # Recursively find all JSON files, excluding schema files
         json_files = []
         for root, _dirs, files in os.walk(data_dir):
+            # Skip schemas directory (contains JSON schema definition files, not tool configs)
+            if "schemas" in root:
+                continue
             for file in files:
                 if file.lower().endswith(".json"):
+                    # Skip files with "schema" in the name
+                    if "schema" in file.lower():
+                        continue
                     json_files.append(os.path.join(root, file))
 
         self.logger.debug(f"Found {len(json_files)} JSON files to scan")
@@ -1470,7 +1501,13 @@ class ToolUniverse:
             tools_in_file = self._read_tools_from_file(json_file)
             if tools_in_file:
                 all_tools.extend(tools_in_file)
-                all_tool_names.update([tool["name"] for tool in tools_in_file])
+                # Only add string names to the set (filter out any non-string names as extra safety)
+                tool_names = [
+                    tool["name"]
+                    for tool in tools_in_file
+                    if isinstance(tool.get("name"), str)
+                ]
+                all_tool_names.update(tool_names)
                 self.logger.debug(f"Loaded {len(tools_in_file)} tools from {json_file}")
 
         self.logger.info(
@@ -1859,7 +1896,10 @@ class ToolUniverse:
                 continue
 
             tool_instance = self._ensure_tool_instance(job)
-            if not tool_instance or not tool_instance.supports_caching():
+            if (
+                not tool_instance
+                or not getattr(tool_instance, "supports_caching", lambda: True)()
+            ):
                 continue
 
             cache_key = tool_instance.get_cache_key(job.arguments or {})
@@ -2078,7 +2118,10 @@ class ToolUniverse:
 
         if cache_enabled:
             tool_instance = self._get_tool_instance(function_name, cache=True)
-            if tool_instance and tool_instance.supports_caching():
+            if (
+                tool_instance
+                and getattr(tool_instance, "supports_caching", lambda: True)()
+            ):
                 cache_namespace = tool_instance.get_cache_namespace()
                 cache_version = tool_instance.get_cache_version()
                 cache_key = self._make_cache_key(function_name, arguments)
@@ -2110,21 +2153,28 @@ class ToolUniverse:
                     )
                     return cached_value
 
+            # Coerce types if lenient coercion is enabled
+            if self.lenient_type_coercion:
+                arguments = self._coerce_arguments_to_schema(function_name, arguments)
+                # Update the original dict so coerced arguments are used
+                function_call_json["arguments"] = arguments
+
             # Validate parameters if requested
             if validate:
                 validation_error = self._validate_parameters(function_name, arguments)
                 if validation_error:
                     return self._create_dual_format_error(validation_error)
-
-            # Check function call format (existing validation)
-            check_status, check_message = self.check_function_call(function_call_json)
-            if check_status is False:
-                error_msg = "Invalid function call: " + check_message
-                return self._create_dual_format_error(
-                    ToolValidationError(
-                        error_msg, details={"check_message": check_message}
+            else:
+                # When validate=False, perform lightweight checks:
+                # 1. Verify tool exists in all_tool_dict
+                # 2. No parameter validation (for performance)
+                if function_name not in self.all_tool_dict:
+                    return self._create_dual_format_error(
+                        ToolValidationError(
+                            f"Tool '{function_name}' not found",
+                            details={"tool_name": function_name},
+                        )
                     )
-                )
 
             # Execute the tool
             tool_arguments = arguments
@@ -2137,16 +2187,42 @@ class ToolUniverse:
                         tool_instance, arguments, stream_callback, use_cache, validate
                     )
                 else:
-                    error_msg = f"Tool '{function_name}' not found"
-                    return self._create_dual_format_error(
-                        ToolUnavailableError(
-                            error_msg,
-                            next_steps=[
-                                "Check tool name spelling",
-                                "Run tu.tools.refresh()",
-                            ],
+                    # Try to auto-load tools if dictionary is empty
+                    if not self._auto_load_tools_if_empty(function_name):
+                        error_msg = "Failed to auto-load tools"
+                        return self._create_dual_format_error(
+                            ToolUnavailableError(
+                                error_msg,
+                                next_steps=[
+                                    "Manually run tu.load_tools()",
+                                    "Check tool configuration",
+                                ],
+                            )
                         )
-                    )
+
+                    # Try to get the tool instance again after loading
+                    tool_instance = self._get_tool_instance(function_name, cache=True)
+                    if tool_instance:
+                        result, tool_arguments = self._execute_tool_with_stream(
+                            tool_instance,
+                            arguments,
+                            stream_callback,
+                            use_cache,
+                            validate,
+                        )
+                    else:
+                        error_msg = (
+                            f"Tool '{function_name}' not found even after loading tools"
+                        )
+                        return self._create_dual_format_error(
+                            ToolUnavailableError(
+                                error_msg,
+                                next_steps=[
+                                    "Check tool name spelling",
+                                    "Verify tool is available in loaded categories",
+                                ],
+                            )
+                        )
             except Exception as e:
                 # Classify and return structured error
                 classified_error = self._classify_exception(e, function_name, arguments)
@@ -2169,7 +2245,11 @@ class ToolUniverse:
                 )
 
             # Cache result if enabled
-            if cache_enabled and tool_instance and tool_instance.supports_caching():
+            if (
+                cache_enabled
+                and tool_instance
+                and getattr(tool_instance, "supports_caching", lambda: True)()
+            ):
                 if cache_key is None:
                     cache_key = self._make_cache_key(function_name, arguments)
                 if cache_namespace is None:
@@ -2325,6 +2405,9 @@ class ToolUniverse:
                     new_tool = tool_class(tool_config=tool, tooluniverse=self)
                 elif "ToolFinderKeyword" == tool_type:
                     new_tool = tool_class(tool_config=tool, tooluniverse=self)
+                elif tool_type in ["ListTools", "GrepTools", "GetToolInfo", "ExecuteTool"]:
+                    # Tool discovery tools need tooluniverse parameter
+                    new_tool = tool_class(tool_config=tool, tooluniverse=self)
                 else:
                     new_tool = tool_class(tool_config=tool)
 
@@ -2356,6 +2439,29 @@ class ToolUniverse:
 
         return None
 
+    def _auto_load_tools_if_empty(self, function_name: str = None) -> bool:
+        """
+        Automatically load tools if the tools dictionary is empty.
+
+        Args:
+            function_name: Optional tool name to check after loading
+
+        Returns:
+            bool: True if tools were loaded successfully, False otherwise
+        """
+        if not self.all_tool_dict:
+            print(
+                "⚠️  Warning: No tools loaded. Automatically running tu.load_tools()..."
+            )
+            try:
+                self.load_tools()
+                print("✅ Tools loaded successfully.")
+                return True
+            except Exception as load_error:
+                print(f"❌ Failed to auto-load tools: {load_error}")
+                return False
+        return True
+
     def _make_cache_key(self, function_name: str, arguments: dict) -> str:
         """Generate cache key by delegating to BaseTool."""
         tool_instance = self._get_tool_instance(function_name, cache=False)
@@ -2369,12 +2475,137 @@ class ToolUniverse:
         )
         return hashlib.md5(serialized.encode()).hexdigest()
 
+    def _coerce_value_to_type(self, value: Any, schema: dict) -> Any:
+        """
+        Coerce a value to match the schema's expected type.
+
+        This function attempts to convert string values to integers, floats,
+        or booleans when the schema expects those types. This makes the
+        system more lenient with user input from LLMs that provide numeric
+        values as strings.
+
+        Args:
+            value: The value to coerce
+            schema: The JSON schema definition for this value
+
+        Returns:
+            The coerced value (or original if coercion fails or not applicable)
+        """
+        # Only coerce string values
+        if not isinstance(value, str):
+            return value
+
+        # Handle anyOf/oneOf schemas by recursively trying each option
+        if "anyOf" in schema:
+            for option in schema["anyOf"]:
+                coerced = self._coerce_value_to_type(value, option)
+                if coerced is not value:  # Coercion succeeded
+                    return coerced
+            return value
+
+        if "oneOf" in schema:
+            for option in schema["oneOf"]:
+                coerced = self._coerce_value_to_type(value, option)
+                if coerced is not value:  # Coercion succeeded
+                    return coerced
+            return value
+
+        # Handle array types
+        if schema.get("type") == "array" and "items" in schema:
+            if isinstance(value, list):
+                # Recursively coerce array items
+                items_schema = schema["items"]
+                return [
+                    self._coerce_value_to_type(item, items_schema) for item in value
+                ]
+            return value
+
+        # Get the expected type
+        expected_type = schema.get("type")
+
+        # Don't coerce if schema expects string type
+        if expected_type == "string":
+            return value
+
+        # Try to coerce based on expected type
+        if expected_type == "integer":
+            try:
+                # Only parse as int if it represents an integer (not a float)
+                if "." not in value:
+                    return int(value)
+            except (ValueError, TypeError):
+                # If coercion fails, return the original value as per function design
+                pass
+        elif expected_type == "number":
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                pass
+        elif expected_type == "boolean":
+            # Handle common boolean string representations
+            lower_value = value.lower().strip()
+            if lower_value in ("true", "1", "yes", "on"):
+                return True
+            elif lower_value in ("false", "0", "no", "off"):
+                return False
+
+        return value
+
+    def _coerce_arguments_to_schema(self, function_name: str, arguments: dict) -> dict:
+        """
+        Coerce all arguments for a tool to match their schema expectations.
+
+        Args:
+            function_name: Name of the tool
+            arguments: Dictionary of arguments to coerce
+
+        Returns:
+            New dictionary with coerced arguments
+        """
+        if function_name not in self.all_tool_dict:
+            return arguments
+
+        tool_config = self.all_tool_dict[function_name]
+        parameter_schema = tool_config.get("parameter", {})
+        properties = parameter_schema.get("properties", {})
+
+        if not properties:
+            return arguments
+
+        coerced_args = {}
+        for param_name, param_value in arguments.items():
+            if param_name in properties:
+                param_schema = properties[param_name]
+                coerced_value = self._coerce_value_to_type(param_value, param_schema)
+
+                # Log when coercion occurs
+                if coerced_value != param_value:
+                    self.logger.debug(
+                        f"Coerced parameter '{param_name}' from "
+                        f"{param_value!r} ({type(param_value).__name__}) "
+                        f"to {coerced_value!r} ({type(coerced_value).__name__})"
+                    )
+
+                coerced_args[param_name] = coerced_value
+            else:
+                coerced_args[param_name] = param_value
+
+        return coerced_args
+
     def _validate_parameters(
         self, function_name: str, arguments: dict
     ) -> Optional[ToolError]:
         """Validate parameters by delegating to BaseTool."""
         if function_name not in self.all_tool_dict:
-            return ToolUnavailableError(f"Tool '{function_name}' not found")
+            # Try to auto-load tools if dictionary is empty
+            if not self._auto_load_tools_if_empty(function_name):
+                return ToolUnavailableError("Failed to auto-load tools")
+
+            # Check again after loading
+            if function_name not in self.all_tool_dict:
+                return ToolUnavailableError(
+                    f"Tool '{function_name}' not found even after loading tools"
+                )
 
         tool_instance = self._get_tool_instance(function_name, cache=False)
         if not tool_instance:
@@ -2986,6 +3217,9 @@ class ToolUniverse:
         # Extract tool configuration
         tools_config = config.get("tools", {})
 
+        # Handle tools_file parameter
+        tools_file_param = kwargs.get("tools_file")
+
         # Merge with override parameters
         tool_type = kwargs.get("tool_type") or tools_config.get("categories")
         exclude_tools = kwargs.get("exclude_tools") or tools_config.get(
@@ -3010,6 +3244,7 @@ class ToolUniverse:
             exclude_tools=exclude_tools,
             exclude_categories=exclude_categories,
             include_tools=include_tools,
+            tools_file=tools_file_param,  # KEY FIX: Pass tools_file
             include_tool_types=include_tool_types,
             exclude_tool_types=exclude_tool_types,
         )

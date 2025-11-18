@@ -157,6 +157,7 @@ ToolFinderLLM: Any
 EmbeddingDatabase: Any
 EmbeddingSync: Any
 RCSBTool: Any
+RCSBSearchTool: Any
 GWASAssociationSearch: Any
 GWASStudySearch: Any
 GWASSNPSearch: Any
@@ -174,9 +175,26 @@ MCPAutoLoaderTool: Any
 ADMETAITool: Any
 AlphaFoldRESTTool: Any
 ComposeTool: Any
+PythonCodeExecutor: Any
+PythonScriptRunner: Any
 CellosaurusSearchTool: Any
 CellosaurusQueryConverterTool: Any
 CellosaurusGetCellLineInfoTool: Any
+# New database tools
+InterProRESTTool: Any
+NCBIBlastTool: Any
+CBioPortalRESTTool: Any
+RegulomeDBRESTTool: Any
+JASPARRESTTool: Any
+ReMapRESTTool: Any
+SCREENRESTTool: Any
+PRIDERESTTool: Any
+EMDBRESTTool: Any
+GtoPdbRESTTool: Any
+MPDRESTTool: Any
+WoRMSRESTTool: Any
+PaleobiologyRESTTool: Any
+OLSTool: Any
 if not _LIGHT_IMPORT and not LAZY_LOADING_ENABLED:
     # Import all tool classes immediately (old behavior) with warning suppression  # noqa: E501
     with warnings.catch_warnings():
@@ -185,7 +203,6 @@ if not _LIGHT_IMPORT and not LAZY_LOADING_ENABLED:
         warnings.filterwarnings("ignore", category=UserWarning)
         warnings.filterwarnings("ignore", category=FutureWarning)
         # Suppress specific third-party warnings
-        warnings.filterwarnings("ignore", category=UserWarning, module="hyperopt")
         warnings.filterwarnings(
             "ignore", category=DeprecationWarning, module="pkg_resources"
         )
@@ -213,6 +230,10 @@ if not _LIGHT_IMPORT and not LAZY_LOADING_ENABLED:
         )
         from .chem_tool import ChEMBLTool
         from .compose_tool import ComposeTool
+        from .python_executor_tool import (
+            PythonCodeExecutor,
+            PythonScriptRunner,
+        )
         from .europe_pmc_tool import EuropePMCTool
         from .semantic_scholar_tool import SemanticScholarTool
         from .pubtator_tool import PubTatorTool
@@ -235,6 +256,13 @@ if not _LIGHT_IMPORT and not LAZY_LOADING_ENABLED:
         from .embedding_database import EmbeddingDatabase
         from .embedding_sync import EmbeddingSync
         from .rcsb_pdb_tool import RCSBTool
+        from .rcsb_search_tool import RCSBSearchTool
+        from .web_search_tool import (
+            WebSearchTool,
+            WebAPIDocumentationSearchTool,
+        )
+        from .package_discovery_tool import DynamicPackageDiscovery
+        from .pypi_package_inspector_tool import PyPIPackageInspector
         from .gwas_tool import (
             GWASAssociationSearch,
             GWASStudySearch,
@@ -263,6 +291,14 @@ if not _LIGHT_IMPORT and not LAZY_LOADING_ENABLED:
         CellosaurusSearchTool,
         CellosaurusQueryConverterTool,
         CellosaurusGetCellLineInfoTool,
+    )
+    from .ols_tool import OLSTool
+
+    # New database tools
+    from .clinvar_tool import (
+        ClinVarSearchVariants,
+        ClinVarGetVariantDetails,
+        ClinVarGetClinicalSignificance,
     )
 
     # Literature search tools
@@ -310,6 +346,8 @@ else:
     )
     ChEMBLTool = _LazyImportProxy("chem_tool", "ChEMBLTool")
     ComposeTool = _LazyImportProxy("compose_tool", "ComposeTool")
+    PythonCodeExecutor = _LazyImportProxy("python_executor_tool", "PythonCodeExecutor")
+    PythonScriptRunner = _LazyImportProxy("python_executor_tool", "PythonScriptRunner")
     EuropePMCTool = _LazyImportProxy("europe_pmc_tool", "EuropePMCTool")
     SemanticScholarTool = _LazyImportProxy(
         "semantic_scholar_tool", "SemanticScholarTool"
@@ -339,6 +377,7 @@ else:
     EmbeddingDatabase = _LazyImportProxy("embedding_database", "EmbeddingDatabase")
     EmbeddingSync = _LazyImportProxy("embedding_sync", "EmbeddingSync")
     RCSBTool = _LazyImportProxy("rcsb_pdb_tool", "RCSBTool")
+    RCSBSearchTool = _LazyImportProxy("rcsb_search_tool", "RCSBSearchTool")
     GWASAssociationSearch = _LazyImportProxy("gwas_tool", "GWASAssociationSearch")
     GWASStudySearch = _LazyImportProxy("gwas_tool", "GWASStudySearch")
     GWASSNPSearch = _LazyImportProxy("gwas_tool", "GWASSNPSearch")
@@ -368,6 +407,7 @@ else:
     CellosaurusGetCellLineInfoTool = _LazyImportProxy(
         "cellosaurus_tool", "CellosaurusGetCellLineInfoTool"
     )
+    OLSTool = _LazyImportProxy("ols_tool", "OLSTool")
     # Literature search tools
     ArXivTool = _LazyImportProxy("arxiv_tool", "ArXivTool")
     CrossrefTool = _LazyImportProxy("crossref_tool", "CrossrefTool")
@@ -381,6 +421,16 @@ else:
     CoreTool = _LazyImportProxy("core_tool", "CoreTool")
     PMCTool = _LazyImportProxy("pmc_tool", "PMCTool")
     ZenodoTool = _LazyImportProxy("zenodo_tool", "ZenodoTool")
+    WebSearchTool = _LazyImportProxy("web_search_tool", "WebSearchTool")
+    WebAPIDocumentationSearchTool = _LazyImportProxy(
+        "web_search_tool", "WebAPIDocumentationSearchTool"
+    )
+    DynamicPackageDiscovery = _LazyImportProxy(
+        "package_discovery_tool", "DynamicPackageDiscovery"
+    )
+    PyPIPackageInspector = _LazyImportProxy(
+        "pypi_package_inspector_tool", "PyPIPackageInspector"
+    )
 
 __all__ = [
     "__version__",
@@ -429,6 +479,7 @@ __all__ = [
     "URLHTMLTagTool",
     "URLToPDFTextTool",
     "RCSBTool",
+    "RCSBSearchTool",
     "GWASAssociationSearch",
     "GWASStudySearch",
     "GWASSNPSearch",
@@ -456,6 +507,7 @@ __all__ = [
     "CellosaurusSearchTool",
     "CellosaurusQueryConverterTool",
     "CellosaurusGetCellLineInfoTool",
+    "OLSTool",
     # Literature search tools
     "ArXivTool",
     "CrossrefTool",
@@ -469,4 +521,12 @@ __all__ = [
     "CoreTool",
     "PMCTool",
     "ZenodoTool",
+    "WebSearchTool",
+    "WebAPIDocumentationSearchTool",
+    "DynamicPackageDiscovery",
+    "PyPIPackageInspector",
+    # ClinVar tools
+    "ClinVarSearchVariants",
+    "ClinVarGetVariantDetails",
+    "ClinVarGetClinicalSignificance",
 ]
