@@ -560,16 +560,21 @@ class ToolUniverse:
         self, all_missing_keys, output_file: str = ".env.template"
     ):
         """Generate a template .env file with all required API keys"""
-        with open(output_file, "w") as f:
-            f.write("# API Keys for ToolUniverse\n")
-            f.write("# Copy this file to .env and fill in your actual API keys\n\n")
+        try:
+            with open(output_file, "w") as f:
+                f.write("# API Keys for ToolUniverse\n")
+                f.write("# Copy this file to .env and fill in your actual API keys\n\n")
 
-            for key in sorted(all_missing_keys):
-                f.write(f"{key}=your_api_key_here\n\n")
+                for key in sorted(all_missing_keys):
+                    f.write(f"{key}=your_api_key_here\n\n")
 
-        self.logger.info(
-            f"Generated API key template: {output_file}. Copy this file to .env and fill in your API keys"
-        )
+            self.logger.info(
+                f"Generated API key template: {output_file}. Copy this file to .env and fill in your API keys"
+            )
+        except OSError as e:
+            self.logger.warning(
+                f"Could not generate {output_file} (likely read-only file system): {e}"
+            )
 
     def _create_hook_config_from_type(self, hook_type):
         """
@@ -2419,6 +2424,14 @@ class ToolUniverse:
             tool_type = tool_name if tool_name else tool.get("type")
             mark_tool_unavailable(tool_type, e)
             self.logger.warning(f"Failed to initialize '{tool_type}': {e}")
+            try:
+                with open("/tmp/tu_init_error.txt", "a") as f:
+                    f.write(f"Failed to initialize '{tool_type}': {e}\nTraceback:\n")
+                    import traceback
+                    traceback.print_exc(file=f)
+            except:
+                pass
+
             # Hide tools that cannot be initialized (e.g., missing optional deps)
             try:
                 # Remove from dictionaries so it doesn't appear in listings
@@ -2630,6 +2643,13 @@ class ToolUniverse:
 
         tool_instance = self._get_tool_instance(function_name, cache=False)
         if not tool_instance:
+            # Check if we have a recorded error for this tool
+            tool_errors = get_tool_errors()
+            if function_name in tool_errors:
+                error_info = tool_errors[function_name]
+                return ToolConfigError(
+                    f"Failed to initialize tool for validation: {error_info['error']}"
+                )
             return ToolConfigError("Failed to initialize tool for validation")
 
         # Check if tool has validate_parameters method (for backward compatibility)

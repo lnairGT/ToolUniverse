@@ -180,6 +180,8 @@ default_tool_files = {
         current_dir, "data", "output_summarization_tools.json"
     ),
     "odphp": os.path.join(current_dir, "data", "odphp_tools.json"),
+    "who_gho": os.path.join(current_dir, "data", "who_gho_tools.json"),
+    "umls": os.path.join(current_dir, "data", "umls_tools.json"),
     "euhealth": os.path.join(current_dir, "data", "euhealth_tools.json"),
     "markitdown": os.path.join(current_dir, "data", "markitdown_tools.json"),
     # Guideline and health policy tools
@@ -206,6 +208,15 @@ default_tool_files = {
     # Compact mode core tools
     "compact_mode": os.path.join(current_dir, "data", "compact_mode_tools.json"),
 }
+
+# Auto-load any user-provided tools from ~/.tooluniverse/user_tools/
+user_tools_dir = os.path.expanduser("~/.tooluniverse/data/user_tools")
+
+if os.path.exists(user_tools_dir):
+    for filename in os.listdir(user_tools_dir):
+        if filename.endswith(".json"):
+            key = f"user_{filename.replace('.json', '')}"
+            default_tool_files[key] = os.path.join(user_tools_dir, filename)
 
 
 def get_default_hook_config():

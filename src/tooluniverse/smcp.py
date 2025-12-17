@@ -98,16 +98,9 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Union, Callable, Literal
 
-try:
-    from fastmcp import FastMCP
+from fastmcp import FastMCP
 
-    FASTMCP_AVAILABLE = True
-except ImportError:
-    # Use stderr to avoid polluting stdout in stdio mode
-    print(
-        "FastMCP is not available. SMCP is built on top of FastMCP, which is a required dependency.",
-        file=sys.stderr,
-    )
+FASTMCP_AVAILABLE = True
 
 from .execute_function import ToolUniverse
 from .logging_config import (
@@ -1389,6 +1382,10 @@ class SMCP(FastMCP):
         # Initialize tool finder (prefer LLM-based if available, fallback to embedding-based)
         self._init_tool_finder()
 
+        if "tool_finder" in (self.exclude_categories or []):
+            self.logger.info("🚫 Skipping 'find_tools' registration (tool_finder excluded)")
+            return
+
         @self.tool()
         async def find_tools(
             query: str,
@@ -1547,16 +1544,10 @@ class SMCP(FastMCP):
             self.logger.debug(
                 f"Available tools: {available_tool_names[:5]}..."
             )  # Show first 5 tools
-
         except Exception as e:
             self.logger.warning(f"⚠️ Failed to check for tool finders: {e}")
 
         # Try to load tool finder tools if not already loaded
-        try:
-            self.logger.debug("🔄 Attempting to load tool finder tools...")
-
-            # Load tool_finder category which includes ToolFinderLLM, Tool_RAG, and ToolFinderKeyword
-            self.tooluniverse.load_tools(tool_type=["tool_finder"])
 
             # Re-check availability
             all_tools = self.tooluniverse.return_all_loaded_tools()

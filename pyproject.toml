@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tooluniverse"
-version = "1.0.14.1"
+version = "1.0.15"
 description = "A comprehensive collection of scientific tools for Agentic AI, offering integration with the ToolUniverse SDK and MCP Server to support advanced scientific workflows."
 authors = [
     { name = "Shanghua Gao", email = "shanghuagao@gmail.com" }
@@ -28,13 +28,14 @@ dependencies = [
     "xmltodict>=1.0.0",
     "lxml>=6.0.0",
     "huggingface_hub>=0.34.0",
+    "jsonpath_ng>=1.6.0",
     "rcsb-api>=1.4.0",
     "fitz>=0.0.1.dev2",
     "pandas>=2.2.3",
     "setuptools>=70.0.0,<81.0.0", # Fix pkg_resources deprecation warnings
     "pdfplumber>=0.11.0",
     "playwright>=1.55.0",
-    "faiss-cpu>=1.12.0",
+    "faiss-cpu==1.12.0",
     "flask>=2.0.0",
     "aiohttp",
     "beautifulsoup4>=4.12.0",
@@ -81,13 +82,13 @@ docs = [
 ]
 embedding = [
     "sentence-transformers>=5.1.0",
-    "faiss-cpu>=1.12.0",
+    "faiss-cpu==1.12.0",
     "huggingface_hub>=0.34.0",
 ]
 ml = [
     "admet-ai>=1.2.0",
     "sentence-transformers>=5.1.0",
-    "faiss-cpu>=1.12.0",
+    "faiss-cpu==1.12.0",
     "huggingface_hub>=0.34.0",
 ]
 graph = [
