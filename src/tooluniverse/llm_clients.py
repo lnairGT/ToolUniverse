@@ -829,13 +829,3 @@ class VLLMClient(BaseLLMClient):
 
         self.logger.error("Max retries exceeded for vLLM request")
         return None
-
-
-import logging
-logger = logging.getLogger(__name__)
-cl = AzureOpenAIClient("gpt-4o", "12", logger)
-messages=[
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "Say hi."}
-]
-print(cl.infer(messages, temperature=0.1, max_tokens=42, return_json=False))
