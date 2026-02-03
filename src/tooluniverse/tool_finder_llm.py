@@ -56,7 +56,7 @@ class ToolFinderLLM(BaseTool):
         configs = tool_config.get("configs", {})
         self.api_type = configs.get("api_type", "CHATGPT")
         self.model_id = configs.get("model_id", "gpt-4o-1120")
-        self.temperature = configs.get("temperature", 0.1)
+        self.temperature = configs.get("temperature", 0.1) if "gpt-5" not in self.model_id else 1
         self.return_json = configs.get("return_json", True)
 
         # Tool filtering settings
@@ -362,6 +362,8 @@ Requirements:
             else:
                 llm_response = result
 
+            raw_response = llm_response
+
             # Parse JSON response from LLM
             if isinstance(llm_response, str):
                 try:
@@ -405,6 +407,7 @@ Requirements:
                 "total_available": len(available_tools),
                 "query": query,
                 "limit_requested": limit,
+                "raw_response": raw_response
             }
 
             if include_reasoning:
