@@ -48,8 +48,8 @@ class ProteinsAPIRESTTool(BaseTool):
         elif tool_name == "proteins_api_get_variants":
             accession = args.get("accession", "")
             if accession:
-                # Try variations endpoint - may not be available for all proteins
-                return f"{self.base_url}/proteins/{accession}/variations"
+                # Use the variation API endpoint (not the proteins endpoint)
+                return f"{self.base_url}/variation"
 
         elif tool_name == "proteins_api_get_proteomics":
             accession = args.get("accession", "")
@@ -75,19 +75,41 @@ class ProteinsAPIRESTTool(BaseTool):
         tool_name = self.tool_config.get("name", "")
 
         if tool_name == "proteins_api_search":
-            # Proteins API search - try different parameter formats
-            # The API may require specific parameter names
+            # Proteins API search requires specific parameters:
+            # gene, protein, accession, organism, taxid, etc.
             if "query" in args:
-                # Try 'accession' or 'name' parameters instead
                 query = args["query"]
-                # If it looks like an accession, use accession parameter
-                if query.startswith("P") and len(query) == 6:
-                    params["accession"] = query
+                # Feature-81B-007: always use gene param for short queries —
+                # gene names like CYP2D6 are 6 chars and were incorrectly
+                # classified as UniProt accessions. For accession lookup,
+                # use proteins_api_get_protein with an explicit accession.
+                if query and len(query) <= 10 and any(c.isalpha() for c in query):
+                    params["gene"] = query
                 else:
-                    # Try name parameter
-                    params["name"] = query
+                    # For longer queries, try protein parameter
+                    params["protein"] = query
             if "size" in args:
                 params["size"] = args["size"]
+            if "offset" in args:
+                params["offset"] = args["offset"]
+            # Feature-69A-007: Default to human (taxId 9606) to avoid non-human proteins
+            # appearing before human proteins. User can override with organism param.
+            if "reviewed" in args:
+                params["reviewed"] = str(args["reviewed"]).lower()
+            if "organism" in args:
+                params["organism"] = args["organism"]
+            elif "taxid" in args:
+                params["taxid"] = args["taxid"]
+            elif "accession" not in params:
+                # Only apply human filter for gene/protein name searches
+                params["taxid"] = "9606"
+
+        elif tool_name == "proteins_api_get_variants":
+            # Variation API uses accession query parameter
+            if "accession" in args:
+                params["accession"] = args["accession"]
+            if "size" in args:
+                params["size"] = args.get("size", 100)
             if "offset" in args:
                 params["offset"] = args["offset"]
 
@@ -297,6 +319,10 @@ class ProteinsAPIRESTTool(BaseTool):
                 url = self._build_url(single_args)
                 params = self._build_params(single_args)
 
+                # For variants tool, params should contain accession
+                if tool_name == "proteins_api_get_variants":
+                    params["accession"] = acc
+
                 response = self.session.get(url, params=params, timeout=self.timeout)
 
                 # Handle fallback for endpoints that may not exist
@@ -376,6 +402,12 @@ class ProteinsAPIRESTTool(BaseTool):
             "proteins_api_get_genome_mappings",
         ]
 
+        # Feature-111B-007: gene_symbol/gene as aliases for query in proteins_api_search
+        if tool_name == "proteins_api_search" and not arguments.get("query"):
+            gene_alias = arguments.get("gene_symbol") or arguments.get("gene")
+            if gene_alias:
+                arguments = dict(arguments, query=gene_alias)
+
         if tool_name in batch_tools and "accession" in arguments:
             accession = arguments.get("accession")
             accessions = self._parse_accessions(accession)
@@ -424,6 +456,56 @@ class ProteinsAPIRESTTool(BaseTool):
             response.raise_for_status()
             data = response.json()
 
+            # Feature-81B-fallback: if gene-name search returns empty,
+            # retry with protein= param (e.g. "insulin" is a protein name, not gene symbol)
+            if (
+                tool_name == "proteins_api_search"
+                and isinstance(data, list)
+                and len(data) == 0
+                and "gene" in params
+            ):
+                retry_params = dict(params)
+                retry_params.pop("gene")
+                retry_params["protein"] = arguments.get("query", "")
+                retry_resp = self.session.get(
+                    url, params=retry_params, timeout=self.timeout
+                )
+                if retry_resp.status_code == 200:
+                    retry_data = retry_resp.json()
+                    if isinstance(retry_data, list) and len(retry_data) > 0:
+                        data = retry_data
+                        # Update response for URL tracking
+                        response = retry_resp
+
+            # Cap features per entry to avoid 25MB+ responses for heavily-annotated proteins
+            if tool_name == "proteins_api_get_variants" and isinstance(data, list):
+                max_variants = int(arguments.get("max_variants", 200))
+                for entry in data:
+                    if isinstance(entry, dict) and "features" in entry:
+                        features = entry["features"]
+                        if len(features) > max_variants:
+                            entry["features"] = features[:max_variants]
+                            entry["features_truncated"] = True
+                            entry["total_features"] = len(features)
+
+            # For gene-name searches, sort exact gene matches to the top
+            if (
+                tool_name == "proteins_api_search"
+                and isinstance(data, list)
+                and "query" in arguments
+            ):
+                query_upper = arguments["query"].strip().upper()
+
+                def _gene_sort_key(entry):
+                    primary = (
+                        entry.get("gene", [{}])[0].get("name", {}).get("value", "")
+                        if entry.get("gene")
+                        else ""
+                    )
+                    return 0 if primary.upper() == query_upper else 1
+
+                data = sorted(data, key=_gene_sort_key)
+
             response_data = {
                 "status": "success",
                 "data": data,
@@ -465,14 +547,22 @@ class ProteinsAPIRESTTool(BaseTool):
                     if fallback_result:
                         return fallback_result
 
-            # For variations endpoint, it may not be available for all proteins
-            if tool_name == "proteins_api_get_variants" and "404" in str(e):
-                return {
-                    "status": "error",
-                    "error": "Variations not available for this protein. Variations endpoint may not be available for all proteins.",
-                    "url": url if "url" in locals() else None,
-                    "note": "Try using proteins_api_get_protein to get comprehensive protein information instead.",
-                }
+            # For variations endpoint, provide helpful error
+            if tool_name == "proteins_api_get_variants":
+                if "404" in str(e):
+                    return {
+                        "status": "error",
+                        "error": "No variations found for this protein accession.",
+                        "url": url if "url" in locals() else None,
+                        "note": "The protein may not have annotated variants. Try using proteins_api_get_protein to get other protein information.",
+                    }
+                elif "400" in str(e):
+                    return {
+                        "status": "error",
+                        "error": "Invalid accession format for variation query.",
+                        "url": url if "url" in locals() else None,
+                        "note": "Ensure you're using a valid UniProt accession (e.g., P05067).",
+                    }
             return {
                 "status": "error",
                 "error": f"Proteins API error: {str(e)}",

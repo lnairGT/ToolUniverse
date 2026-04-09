@@ -8,15 +8,15 @@
       "properties": {
         "assay_title": {
           "type": "string",
-          "description": "Assay name filter (e.g., 'ChIP-seq', 'ATAC-seq', 'RNA-seq', 'Hi-C'). Leave empty to search all assays."
+          "description": "Assay name filter (e.g., 'TF ChIP-seq', 'Histone ChIP-seq', 'ATAC-seq', 'RNA-seq', 'Hi-C'). Leave empty to search all assays. Use 'TF ChIP-seq' for transcription factor binding experiments."
         },
         "target": {
           "type": "string",
-          "description": "Target protein/factor filter (e.g., 'CTCF', 'H3K4me3', 'POLR2A'). Use for ChIP-seq experiments."
+          "description": "Target protein/factor filter (e.g., 'CTCF', 'H3K4me3', 'POLR2A'). Use for TF ChIP-seq experiments."
         },
         "organism": {
           "type": "string",
-          "description": "Organism filter (e.g., 'Homo sapiens', 'Mus musculus', 'Drosophila melanogaster')."
+          "description": "Organism filter — maps to ENCODE's organism scientific name field (e.g., 'Homo sapiens', 'Mus musculus', 'Drosophila melanogaster')."
         },
         "status": {
           "type": "string",
@@ -52,7 +52,7 @@
                 "properties": {
                   "accession": {"type": "string"},
                   "assay_title": {"type": "string"},
-                  "target": {"type": "object"},
+                  "target": {"type": ["object", "string"]},
                   "organism": {"type": "string"},
                   "status": {"type": "string"}
                 }
@@ -64,7 +64,7 @@
       }
     },
     "test_examples": [
-      {"assay_title": "ChIP-seq", "limit": 1},
+      {"assay_title": "TF ChIP-seq", "limit": 1},
       {"assay_title": "ATAC-seq", "limit": 1}
     ],
     "label": ["ENCODE", "Experiment", "Search"],
@@ -159,29 +159,17 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "status": {"type": "string", "enum": ["success", "error"]},
-        "url": {"type": ["string", "null"]},
-        "data": {
-          "type": ["object", "null"],
-          "additionalProperties": true,
-          "properties": {
-            "accession": {"type": "string"},
-            "assay_title": {"type": "string"},
-            "description": {"type": "string"},
-            "biosample_summary": {"type": "string"},
-            "target": {"type": "object"},
-            "replicates": {"type": "array"},
-            "files": {"type": "array"},
-            "status": {"type": "string"},
-            "lab": {"type": "object"},
-            "award": {"type": "string"}
-          }
-        },
-        "error": {"type": ["string", "null"]},
-        "status_code": {"type": ["integer", "null"]},
-        "detail": {"type": ["string", "null"]}
-      },
-      "required": ["status"]
+        "accession": {"type": "string"},
+        "assay_title": {"type": "string"},
+        "description": {"type": "string"},
+        "biosample_summary": {"type": "string"},
+        "target": {"type": ["object", "string"]},
+        "replicates": {"type": "array"},
+        "files": {"type": "array"},
+        "status": {"type": "string"},
+        "lab": {"type": ["object", "string"]},
+        "award": {"type": "string"}
+      }
     },
     "test_examples": [
       {"accession": "ENCSR000AKS"},
@@ -197,7 +185,7 @@
       "properties": {
         "accession": {
           "type": "string",
-          "description": "ENCODE file accession identifier (format: ENCFF######, e.g., 'ENCFF001JXO', 'ENCFF000AAA'). Find accessions using ENCODE_list_files."
+          "description": "ENCODE file accession identifier (format: ENCFF######, e.g., 'ENCFF001JXO'). Find accessions using ENCODE_list_files."
         }
       },
       "required": ["accession"]
@@ -210,35 +198,22 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "status": {"type": "string", "enum": ["success", "error"]},
-        "url": {"type": ["string", "null"]},
-        "data": {
-          "type": ["object", "null"],
-          "additionalProperties": true,
-          "properties": {
-            "accession": {"type": "string"},
-            "file_format": {"type": "string"},
-            "file_type": {"type": "string"},
-            "output_type": {"type": "string"},
-            "dataset": {"type": "string"},
-            "file_size": {"type": "integer"},
-            "md5sum": {"type": "string"},
-            "href": {"type": "string"},
-            "assembly": {"type": "string"},
-            "biological_replicates": {"type": "array"},
-            "technical_replicates": {"type": "array"},
-            "status": {"type": "string"}
-          }
-        },
-        "error": {"type": ["string", "null"]},
-        "status_code": {"type": ["integer", "null"]},
-        "detail": {"type": ["string", "null"]}
-      },
-      "required": ["status"]
+        "accession": {"type": "string"},
+        "file_format": {"type": "string"},
+        "file_type": {"type": "string"},
+        "output_type": {"type": "string"},
+        "dataset": {"type": "string"},
+        "file_size": {"type": "integer"},
+        "md5sum": {"type": "string"},
+        "href": {"type": "string"},
+        "assembly": {"type": "string"},
+        "biological_replicates": {"type": "array"},
+        "technical_replicates": {"type": "array"},
+        "status": {"type": "string"}
+      }
     },
     "test_examples": [
-      {"accession": "ENCFF001JXO"},
-      {"accession": "ENCFF000AAA"}
+      {"accession": "ENCFF001JXO"}
     ]
   },
   {
@@ -254,7 +229,7 @@
         },
         "biosample_type": {
           "type": "string",
-          "description": "Biosample classification filter (e.g., 'cell line', 'tissue', 'primary cell', 'in vitro differentiated cells')."
+          "description": "Biosample classification filter — maps to ENCODE's biosample_ontology.classification field (e.g., 'cell line', 'tissue', 'primary cell', 'in vitro differentiated cells')."
         },
         "treatment": {
           "type": "string",
@@ -289,7 +264,7 @@
                 "type": "object",
                 "properties": {
                   "accession": {"type": "string"},
-                  "biosample_ontology": {"type": "object"},
+                  "biosample_ontology": {"type": ["object", "string"]},
                   "organism": {"type": "string"},
                   "life_stage": {"type": "string"},
                   "summary": {"type": "string"}
@@ -328,32 +303,20 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "status": {"type": "string", "enum": ["success", "error"]},
-        "url": {"type": ["string", "null"]},
-        "data": {
-          "type": ["object", "null"],
-          "additionalProperties": true,
-          "properties": {
-            "accession": {"type": "string"},
-            "biosample_ontology": {"type": "object"},
-            "organism": {"type": "string"},
-            "life_stage": {"type": "string"},
-            "age": {"type": "string"},
-            "age_units": {"type": "string"},
-            "sex": {"type": "string"},
-            "donor": {"type": "object"},
-            "treatments": {"type": "array"},
-            "genetic_modifications": {"type": "array"},
-            "description": {"type": "string"},
-            "summary": {"type": "string"},
-            "status": {"type": "string"}
-          }
-        },
-        "error": {"type": ["string", "null"]},
-        "status_code": {"type": ["integer", "null"]},
-        "detail": {"type": ["string", "null"]}
-      },
-      "required": ["status"]
+        "accession": {"type": "string"},
+        "biosample_ontology": {"type": ["object", "string"]},
+        "organism": {"type": "string"},
+        "life_stage": {"type": "string"},
+        "age": {"type": "string"},
+        "age_units": {"type": "string"},
+        "sex": {"type": "string"},
+        "donor": {"type": ["object", "string"]},
+        "treatments": {"type": "array"},
+        "genetic_modifications": {"type": "array"},
+        "description": {"type": "string"},
+        "summary": {"type": "string"},
+        "status": {"type": "string"}
+      }
     },
     "test_examples": [
       {"accession": "ENCBS000AAA"},

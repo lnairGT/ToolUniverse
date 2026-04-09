@@ -9,8 +9,8 @@ from ._shared_client import get_shared_client
 
 
 def GTEx_get_multi_tissue_eqtls(
-    operation: str,
     gencode_id: str,
+    operation: Optional[str] = None,
     variant_id: Optional[str] = None,
     dataset_id: Optional[str] = "gtex_v8",
     page: Optional[int] = 0,
@@ -19,7 +19,7 @@ def GTEx_get_multi_tissue_eqtls(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> list[Any]:
     """
     Get multi-tissue eQTL meta-analysis results (Metasoft). Returns m-values (posterior probability o...
 
@@ -46,21 +46,27 @@ def GTEx_get_multi_tissue_eqtls(
 
     Returns
     -------
-    dict[str, Any]
+    list[Any]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "operation": operation,
+            "gencode_id": gencode_id,
+            "variant_id": variant_id,
+            "dataset_id": dataset_id,
+            "page": page,
+            "items_per_page": items_per_page,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "GTEx_get_multi_tissue_eqtls",
-            "arguments": {
-                "operation": operation,
-                "gencode_id": gencode_id,
-                "variant_id": variant_id,
-                "dataset_id": dataset_id,
-                "page": page,
-                "items_per_page": items_per_page,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

@@ -19,6 +19,7 @@ Examples:
 """
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -149,6 +150,16 @@ def run_tests(tu: ToolUniverse, configs: List[Tuple[Path, List[Dict]]], args) ->
             stats["tools"] += 1
             examples = tool.get("test_examples", [])
             schema = tool.get("return_schema")
+            
+            # Check if tool requires API keys that are not available
+            required_keys = tool.get("required_api_keys", [])
+            if required_keys:
+                missing_keys = [key for key in required_keys if not os.getenv(key)]
+                if missing_keys:
+                    if args.verbose:
+                        print(f"  ⏭️  {name}: Skipped (missing API keys: {', '.join(missing_keys)})")
+                    stats["skipped"] += 1
+                    continue
 
             if not examples:
                 if args.verbose:

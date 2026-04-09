@@ -15,7 +15,7 @@ def MGnify_list_analyses(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> list[Any]:
     """
     List analyses associated with a study accession (taxonomic/functional outputs). Use to enumerate ...
 
@@ -34,14 +34,20 @@ def MGnify_list_analyses(
 
     Returns
     -------
-    dict[str, Any]
+    list[Any]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {"study_accession": study_accession, "size": size}.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "MGnify_list_analyses",
-            "arguments": {"study_accession": study_accession, "size": size},
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

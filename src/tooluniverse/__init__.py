@@ -1,11 +1,24 @@
 from importlib.metadata import version
 import os
-import warnings
 from typing import Any, Optional, List
+
+# Allow installed sub-packages (e.g. tooluniverse-circuit) to contribute
+# modules into the tooluniverse namespace even when the main package is
+# installed in editable mode (pip install -e).
+from pkgutil import extend_path
+__path__ = extend_path(__path__, __name__)
 
 from .execute_function import ToolUniverse
 from .base_tool import BaseTool
 from .default_config import default_tool_files
+from .profile import (
+    ProfileLoader,
+    validate_profile_config,
+    validate_with_schema,
+    validate_yaml_file_with_schema,
+    validate_yaml_format_by_template,
+    PROFILE_SCHEMA,
+)
 
 from .tool_registry import (
     register_tool,
@@ -14,26 +27,25 @@ from .tool_registry import (
     auto_discover_tools,
 )
 
-_LIGHT_IMPORT = os.getenv("TOOLUNIVERSE_LIGHT_IMPORT", "false").lower() in (
-    "true",
-    "1",
-    "yes",
+_TRUTHY_VALUES = {"true", "1", "yes"}
+
+_LIGHT_IMPORT = (
+    os.getenv("TOOLUNIVERSE_LIGHT_IMPORT", "false").lower() in _TRUTHY_VALUES
 )
 
 # Version information - read from package metadata or pyproject.toml
 __version__ = version("tooluniverse")
 
 # Check if lazy loading is enabled
-LAZY_LOADING_ENABLED = os.getenv("TOOLUNIVERSE_LAZY_LOADING", "true").lower() in (
-    "true",
-    "1",
-    "yes",
+LAZY_LOADING_ENABLED = (
+    os.getenv("TOOLUNIVERSE_LAZY_LOADING", "true").lower() in _TRUTHY_VALUES
 )
 
 # Import MCP functionality (but don't patch yet to avoid circular imports)
 if not _LIGHT_IMPORT:
     try:
         from .mcp_integration import _patch_tooluniverse
+
         _MCP_PATCH_AVAILABLE = True
     except ImportError:
         # MCP functionality not available
@@ -42,17 +54,35 @@ if not _LIGHT_IMPORT:
 
 
 # Import SMCP with graceful fallback and consistent signatures for type checking
-try:
-    from .smcp import SMCP, create_smcp_server
+if not _LIGHT_IMPORT:
+    try:
+        from .smcp import SMCP, create_smcp_server
 
-    _SMCP_AVAILABLE = True
-except ImportError:
+        _SMCP_AVAILABLE = True
+    except ImportError:
+        _SMCP_AVAILABLE = False
+
+        class SMCP:  # type: ignore[no-redef]
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                raise ImportError(
+                    "SMCP requires FastMCP. Install with: pip install fastmcp"
+                )
+
+        def create_smcp_server(
+            name: str = "SMCP Server",
+            tool_categories: Optional[List[str]] = None,
+            search_enabled: bool = True,
+            **kwargs: Any,
+        ) -> SMCP:
+            raise ImportError("SMCP requires FastMCP. Install with: pip install fastmcp")
+else:
     _SMCP_AVAILABLE = False
 
     class SMCP:  # type: ignore[no-redef]
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             raise ImportError(
-                "SMCP requires FastMCP. Install with: pip install fastmcp"
+                "SMCP not loaded in light-import mode. "
+                "Use `from tooluniverse.smcp import SMCP` directly."
             )
 
     def create_smcp_server(
@@ -61,22 +91,35 @@ except ImportError:
         search_enabled: bool = True,
         **kwargs: Any,
     ) -> SMCP:
-        raise ImportError("SMCP requires FastMCP. Install with: pip install fastmcp")
+        raise ImportError(
+            "SMCP not loaded in light-import mode. "
+            "Use `from tooluniverse.smcp import create_smcp_server` directly."
+        )
 
 
 # Import HTTP Client with graceful fallback for minimal installation
-try:
-    from .http_client import ToolUniverseClient
+if not _LIGHT_IMPORT:
+    try:
+        from .http_client import ToolUniverseClient
 
-    _HTTP_CLIENT_AVAILABLE = True
-except ImportError:
+        _HTTP_CLIENT_AVAILABLE = True
+    except ImportError:
+        _HTTP_CLIENT_AVAILABLE = False
+
+        class ToolUniverseClient:  # type: ignore[no-redef]
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                raise ImportError(
+                    "HTTP Client requires requests and pydantic. "
+                    "Install with: pip install tooluniverse[client]"
+                )
+else:
     _HTTP_CLIENT_AVAILABLE = False
 
     class ToolUniverseClient:  # type: ignore[no-redef]
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             raise ImportError(
-                "HTTP Client requires requests and pydantic. "
-                "Install with: pip install tooluniverse[client]"
+                "HTTP Client not loaded in light-import mode. "
+                "Use `from tooluniverse.http_client import ToolUniverseClient` directly."
             )
 
 
@@ -100,29 +143,15 @@ def __dir__() -> List[str]:
     Dynamic directory listing.
     Includes standard globals plus all available tools.
     """
-    # Standard globals
-    global_names = list(globals().keys())
-
-    # Available tools (triggers discovery if not already done)
-    # auto_discover_tools(lazy=True) ensures we have the mapping
-    tool_registry = auto_discover_tools(lazy=True)
-    tool_names = list(tool_registry.keys())
-
-    return sorted(list(set(global_names + tool_names)))
+    global_names = set(globals().keys())
+    tool_names = set(auto_discover_tools(lazy=True).keys())
+    return sorted(global_names | tool_names)
 
 
-# If lazy loading is disabled, we should eagerly load everything now
-# just to be safe and replicate old behavior, although __getattr__ works fine too.
-# But for compatibility with `from tooluniverse import *` or inspection tools that
-# don't use __dir__, eager loading might be desired if LAZY_LOADING_ENABLED is False.
+# If lazy loading is disabled, eagerly import all tool modules so they
+# are immediately available via the registry.
 if not _LIGHT_IMPORT and not LAZY_LOADING_ENABLED:
-    # Trigger full discovery (imports all modules)
     auto_discover_tools(lazy=False)
-    # Note: We don't inject them into globals() here because __getattr__ handles access.
-    # But if users expect them to be in globals() for some reason, they might be disappointed.
-    # However, PEP 562 __getattr__ handles instance access perfectly.
-    # 'from tooluniverse import ToolName' works.
-    pass
 
 
 __all__ = [
@@ -135,6 +164,12 @@ __all__ = [
     "create_smcp_server",
     "ToolUniverseClient",
     "default_tool_files",
+    "ProfileLoader",
+    "validate_profile_config",
+    "validate_with_schema",
+    "validate_yaml_file_with_schema",
+    "validate_yaml_format_by_template",
+    "PROFILE_SCHEMA",
 ]
 
 
@@ -151,4 +186,3 @@ if not _LIGHT_IMPORT:
 # Apply MCP patches after all imports are complete to avoid circular imports
 if not _LIGHT_IMPORT and _MCP_PATCH_AVAILABLE and _patch_tooluniverse is not None:
     _patch_tooluniverse(ToolUniverse)
-

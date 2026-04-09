@@ -81,6 +81,16 @@ class CELLxGENECensusTool(BaseTool):
             obs_value_filter = arguments.get("obs_value_filter")
             column_names = arguments.get("column_names")
 
+            # Safeguard: Require filter to prevent querying 50M+ cells
+            if not obs_value_filter:
+                return {
+                    "status": "error",
+                    "error": "obs_value_filter is required. The Census contains 50M+ cells; "
+                    "queries without filters will timeout. Examples: "
+                    "'tissue == \"lung\"', 'cell_type == \"T cell\"', "
+                    '\'disease == "COVID-19" and tissue == "blood"\'',
+                }
+
             with cellxgene_census.open_soma(census_version=census_version) as census:
                 obs_df = cellxgene_census.get_obs(
                     census,
@@ -151,6 +161,15 @@ class CELLxGENECensusTool(BaseTool):
             obs_column_names = arguments.get("obs_column_names")
             var_column_names = arguments.get("var_column_names")
 
+            # Safeguard: Require at least one filter to prevent massive queries
+            if not obs_value_filter and not var_value_filter:
+                return {
+                    "status": "error",
+                    "error": "At least one filter (obs_value_filter or var_value_filter) is required. "
+                    "The Census contains 50M+ cells and 60K+ genes; unfiltered queries will timeout. "
+                    'Examples: obs_value_filter=\'tissue == "lung"\', var_value_filter=\'feature_name in ["TP53", "BRCA1"]\'',
+                }
+
             with cellxgene_census.open_soma(census_version=census_version) as census:
                 adata = cellxgene_census.get_anndata(
                     census,
@@ -209,8 +228,25 @@ class CELLxGENECensusTool(BaseTool):
             organism = arguments.get("organism", "Homo sapiens")
             embedding_name = arguments.get("embedding_name")
 
+            # Check if experimental module is available (removed in cellxgene_census >= 1.17.0)
+            if not hasattr(cellxgene_census, "experimental"):
+                return {
+                    "status": "success",
+                    "data": {
+                        "message": (
+                            "The cellxgene_census.experimental module for embeddings is no longer available "
+                            "in cellxgene_census >= 1.17.0. Pre-calculated embeddings (scVI, Geneformer) "
+                            "can be accessed via the obs_embedding obsm slots when querying AnnData objects. "
+                            "Use CELLxGENE_query_cells with the embedding coordinate columns to retrieve "
+                            "cell embeddings directly."
+                        ),
+                        "organism": organism,
+                        "embedding_name": embedding_name,
+                        "available": False,
+                    },
+                }
+
             with cellxgene_census.open_soma(census_version=census_version) as census:
-                # Get available embeddings
                 available_embeddings = (
                     cellxgene_census.experimental.get_all_available_embeddings(
                         census_version=census_version
@@ -218,23 +254,25 @@ class CELLxGENECensusTool(BaseTool):
                 )
 
                 if embedding_name:
-                    # Get specific embedding
                     embedding_data = cellxgene_census.experimental.get_embedding(
                         census, organism=organism, embedding_name=embedding_name
                     )
-
                     return {
                         "status": "success",
-                        "organism": organism,
-                        "embedding_name": embedding_name,
-                        "shape": embedding_data.shape,
-                        "message": "Embedding retrieved successfully",
+                        "data": {
+                            "organism": organism,
+                            "embedding_name": embedding_name,
+                            "shape": list(embedding_data.shape),
+                            "message": "Embedding retrieved successfully",
+                        },
                     }
                 else:
                     return {
                         "status": "success",
-                        "available_embeddings": available_embeddings,
-                        "message": "Specify 'embedding_name' to retrieve specific embedding",
+                        "data": {
+                            "available_embeddings": available_embeddings,
+                            "message": "Specify 'embedding_name' to retrieve specific embedding",
+                        },
                     }
         except Exception as e:
             return {"status": "error", "error": str(e)}

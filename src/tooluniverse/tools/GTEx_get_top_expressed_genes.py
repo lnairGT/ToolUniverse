@@ -9,17 +9,17 @@ from ._shared_client import get_shared_client
 
 
 def GTEx_get_top_expressed_genes(
-    operation: str,
     tissue_site_detail_id: str,
+    operation: Optional[str] = None,
     filter_mt_genes: Optional[bool] = True,
-    dataset_id: Optional[str] = "gtex_v10",
+    dataset_id: Optional[str] = "gtex_v8",
     page: Optional[int] = 0,
     items_per_page: Optional[int] = 250,
     *,
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> list[Any]:
     """
     Get top expressed genes in a specific tissue sorted by median expression. Returns gene list with ...
 
@@ -46,21 +46,27 @@ def GTEx_get_top_expressed_genes(
 
     Returns
     -------
-    dict[str, Any]
+    list[Any]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "operation": operation,
+            "tissue_site_detail_id": tissue_site_detail_id,
+            "filter_mt_genes": filter_mt_genes,
+            "dataset_id": dataset_id,
+            "page": page,
+            "items_per_page": items_per_page,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "GTEx_get_top_expressed_genes",
-            "arguments": {
-                "operation": operation,
-                "tissue_site_detail_id": tissue_site_detail_id,
-                "filter_mt_genes": filter_mt_genes,
-                "dataset_id": dataset_id,
-                "page": page,
-                "items_per_page": items_per_page,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

@@ -16,7 +16,7 @@ def ChEMBL_search_similar_molecules(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> list[Any]:
     """
     Search for molecules similar to a given SMILES, chembl_id, or compound or drug name, using the Ch...
 
@@ -37,18 +37,24 @@ def ChEMBL_search_similar_molecules(
 
     Returns
     -------
-    dict[str, Any]
+    list[Any]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "query": query,
+            "similarity_threshold": similarity_threshold,
+            "max_results": max_results,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "ChEMBL_search_similar_molecules",
-            "arguments": {
-                "query": query,
-                "similarity_threshold": similarity_threshold,
-                "max_results": max_results,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

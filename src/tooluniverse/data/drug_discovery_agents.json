@@ -26,10 +26,6 @@
       ]
     },
     "configs": {
-      "api_type": "CHATGPT",
-      "model_id": "gpt-4.1",
-      "temperature": 0.7,
-      "max_new_tokens": 3000,
       "return_json": true
     },
     "test_examples": [
@@ -77,20 +73,12 @@
       ]
     },
     "configs": {
-      "api_type": "CHATGPT",
-      "model_id": "gpt-4.1",
-      "temperature": 0.8,
-      "max_new_tokens": 4000,
       "return_json": true
     },
     "test_examples": [
       {
         "disease_name": "Diabetes Mellitus",
-        "targets": [
-          "EGFR",
-          "BRAF",
-          "ALK"
-        ],
+        "targets": "EGFR, BRAF, ALK",
         "context": "The quick brown fox jumps over the lazy dog."
       }
     ],
@@ -133,10 +121,6 @@
       ]
     },
     "configs": {
-      "api_type": "CHATGPT",
-      "model_id": "gpt-4.1",
-      "temperature": 0.6,
-      "max_new_tokens": 5000,
       "return_json": true
     },
     "test_examples": [
@@ -179,10 +163,6 @@
       ]
     },
     "configs": {
-      "api_type": "CHATGPT",
-      "model_id": "gpt-4.1",
-      "temperature": 0.5,
-      "max_new_tokens": 3000,
       "return_json": true
     },
     "test_examples": [
@@ -230,10 +210,6 @@
       ]
     },
     "configs": {
-      "api_type": "CHATGPT",
-      "model_id": "gpt-4.1",
-      "temperature": 0.6,
-      "max_new_tokens": 4000,
       "return_json": true
     },
     "test_examples": [
@@ -288,10 +264,6 @@
       ]
     },
     "configs": {
-      "api_type": "CHATGPT",
-      "model_id": "gpt-4.1",
-      "temperature": 0.7,
-      "max_new_tokens": 4000,
       "return_json": true
     },
     "test_examples": [
@@ -347,10 +319,6 @@
       ]
     },
     "configs": {
-      "api_type": "CHATGPT",
-      "model_id": "gpt-4.1",
-      "temperature": 0.6,
-      "max_new_tokens": 5000,
       "return_json": true
     },
     "test_examples": [

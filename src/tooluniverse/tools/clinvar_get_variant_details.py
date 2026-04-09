@@ -1,14 +1,14 @@
 """
-clinvar_get_variant_details
+ClinVar_get_variant_details
 
-Get detailed variant information from ClinVar by variant ID. Returns comprehensive variant data i...
+Get variant summary information from ClinVar by variant ID. Returns accession, title, genes, clin...
 """
 
 from typing import Any, Optional, Callable
 from ._shared_client import get_shared_client
 
 
-def clinvar_get_variant_details(
+def ClinVar_get_variant_details(
     variant_id: str,
     *,
     stream_callback: Optional[Callable[[str], None]] = None,
@@ -16,7 +16,7 @@ def clinvar_get_variant_details(
     validate: bool = True,
 ) -> dict[str, Any]:
     """
-    Get detailed variant information from ClinVar by variant ID. Returns comprehensive variant data i...
+    Get variant summary information from ClinVar by variant ID. Returns accession, title, genes, clin...
 
     Parameters
     ----------
@@ -35,10 +35,12 @@ def clinvar_get_variant_details(
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {k: v for k, v in {"variant_id": variant_id}.items() if v is not None}
     return get_shared_client().run_one_function(
         {
-            "name": "clinvar_get_variant_details",
-            "arguments": {"variant_id": variant_id},
+            "name": "ClinVar_get_variant_details",
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,
@@ -46,4 +48,4 @@ def clinvar_get_variant_details(
     )
 
 
-__all__ = ["clinvar_get_variant_details"]
+__all__ = ["ClinVar_get_variant_details"]

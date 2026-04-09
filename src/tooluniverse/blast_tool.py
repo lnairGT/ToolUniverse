@@ -1,8 +1,15 @@
 from typing import Any, Dict
-from Bio.Blast import NCBIWWW, NCBIXML
-from Bio.Seq import Seq
 from .base_tool import BaseTool
 from .tool_registry import register_tool
+
+# Optional dependency - Biopython
+try:
+    from Bio.Blast import NCBIWWW, NCBIXML
+    from Bio.Seq import Seq
+
+    BIOPYTHON_AVAILABLE = True
+except ImportError:
+    BIOPYTHON_AVAILABLE = False
 
 
 @register_tool("NCBIBlastTool")
@@ -31,7 +38,7 @@ class NCBIBlastTool(BaseTool):
                 alignment_data = {
                     "hit_id": getattr(alignment, "hit_id", "unknown"),
                     "hit_def": getattr(alignment, "hit_def", "unknown"),
-                    "hit_length": getattr(alignment, "hit_length", 0),
+                    "hit_length": getattr(alignment, "length", 0),
                     "hsps": [],
                 }
 
@@ -46,8 +53,8 @@ class NCBIBlastTool(BaseTool):
                         "align_length": getattr(hsp, "align_length", 0),
                         "query_start": getattr(hsp, "query_start", 0),
                         "query_end": getattr(hsp, "query_end", 0),
-                        "hit_start": getattr(hsp, "hit_start", 0),
-                        "hit_end": getattr(hsp, "hit_end", 0),
+                        "hit_start": getattr(hsp, "sbjct_start", 0),
+                        "hit_end": getattr(hsp, "sbjct_end", 0),
                         "query": getattr(hsp, "query", ""),
                         "match": getattr(hsp, "match", ""),
                         "sbjct": getattr(hsp, "sbjct", ""),
@@ -60,6 +67,7 @@ class NCBIBlastTool(BaseTool):
 
         except Exception as e:
             return {
+                "status": "error",
                 "error": f"Failed to parse BLAST results: {str(e)}",
                 "raw_xml": (
                     blast_xml[:1000] + "..." if len(blast_xml) > 1000 else blast_xml
@@ -68,10 +76,27 @@ class NCBIBlastTool(BaseTool):
 
     def run(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Execute BLAST search using NCBI Web service"""
+        # Check if Biopython is available
+        if not BIOPYTHON_AVAILABLE:
+            return {
+                "status": "error",
+                "error": "Biopython is required for BLAST tools. Install with: pip install biopython",
+            }
+
         try:
             sequence = arguments.get("sequence", "")
-            blast_type = arguments.get("blast_type", "blastn")
-            database = arguments.get("database", "nt")
+
+            # Determine blast_type from tool name or arguments
+            tool_name = self.tool_config.get("name", "")
+            if "protein" in tool_name.lower():
+                default_blast_type = "blastp"
+                default_database = "nr"
+            else:
+                default_blast_type = "blastn"
+                default_database = "nt"
+
+            blast_type = arguments.get("blast_type", default_blast_type)
+            database = arguments.get("database", default_database)
             expect = arguments.get("expect", 10.0)
             hitlist_size = arguments.get("hitlist_size", 50)
 
@@ -87,7 +112,7 @@ class NCBIBlastTool(BaseTool):
                 if len(seq_obj) < 10:
                     return {
                         "status": "error",
-                        "error": "Sequence too short (minimum 10 nucleotides)",
+                        "error": "Sequence too short (minimum 10 residues)",
                     }
             except Exception as e:
                 return {
@@ -129,4 +154,7 @@ class NCBIBlastTool(BaseTool):
             }
 
         except Exception as e:
-            return {"status": "error", "error": f"BLAST search failed: {str(e)}"}
+            return {
+                "status": "error",
+                "error": f"BLAST search failed: {str(e)}",
+            }

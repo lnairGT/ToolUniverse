@@ -9,7 +9,7 @@ from ._shared_client import get_shared_client
 
 
 def OpenTargets_get_drug_blackbox_status_by_chembl_ID(
-    chemblId: list[str],
+    chemblId: str,
     *,
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
@@ -20,7 +20,7 @@ def OpenTargets_get_drug_blackbox_status_by_chembl_ID(
 
     Parameters
     ----------
-    chemblId : list[str]
+    chemblId : str
         The chemblId of a drug.
     stream_callback : Callable, optional
         Callback for streaming output
@@ -35,10 +35,12 @@ def OpenTargets_get_drug_blackbox_status_by_chembl_ID(
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {k: v for k, v in {"chemblId": chemblId}.items() if v is not None}
     return get_shared_client().run_one_function(
         {
             "name": "OpenTargets_get_drug_blackbox_status_by_chembl_ID",
-            "arguments": {"chemblId": chemblId},
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

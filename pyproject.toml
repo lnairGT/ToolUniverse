@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tooluniverse"
-version = "1.0.16.1"
+version = "1.1.11"
 description = "A comprehensive collection of scientific tools for Agentic AI, offering integration with the ToolUniverse SDK and MCP Server to support advanced scientific workflows."
 authors = [
     { name = "Shanghua Gao", email = "shanghuagao@gmail.com" }
@@ -24,7 +24,7 @@ dependencies = [
     "google-genai>=1.36.0",
     "google-generativeai>=0.7.2",
     "mcp[cli]>=1.9.3",
-    "fastmcp>=2.12.3",
+    "fastmcp>=2.12.3,<4.0.0",
     "xmltodict>=1.0.0",
     "lxml>=6.0.0",
     "huggingface_hub>=0.34.0",
@@ -125,8 +125,12 @@ space = [
     "pyyaml>=6.0.0",
     "requests>=2.32.0",
 ]
+bioinformatics = [
+    "biopython>=1.80",
+]
+# circuit: install manually with `pip install git+https://github.com/tooluniverse/circuit.git`
 all = [
-    "tooluniverse[dev,docs,graph,visualization,space,embedding,ml]",
+    "tooluniverse[dev,docs,graph,visualization,space,embedding,ml,bioinformatics]",
 ]
 build = [
     "pyinstaller>=6.0.0",
@@ -136,6 +140,8 @@ build = [
 Homepage = "https://github.com/mims-harvard/ToolUniverse"
 
 [project.scripts]
+tu = "tooluniverse.cli:main"
+tooluniverse = "tooluniverse.smcp_server:run_default_stdio_server"
 tooluniverse-mcp = "tooluniverse.smcp_server:run_http_server"
 tooluniverse-smcp = "tooluniverse.smcp_server:run_smcp_server"
 tooluniverse-smcp-server = "tooluniverse.smcp_server:run_http_server"
@@ -174,6 +180,8 @@ exclude = [
     ".venv",
     "docs",
     "examples",
+    "skills",
+    "temp_docs_and_tests",
 ]
 unsafe-fixes = true
 

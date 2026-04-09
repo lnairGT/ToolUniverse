@@ -15,7 +15,7 @@ def proteins_api_get_epitopes(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> list[Any]:
     """
     Get epitope sequences for a protein. Returns B-cell and T-cell epitope information with antigenic...
 
@@ -34,14 +34,20 @@ def proteins_api_get_epitopes(
 
     Returns
     -------
-    dict[str, Any]
+    list[Any]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {"accession": accession, "format": format}.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "proteins_api_get_epitopes",
-            "arguments": {"accession": accession, "format": format},
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

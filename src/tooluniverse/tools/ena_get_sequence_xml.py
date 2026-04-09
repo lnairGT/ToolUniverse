@@ -14,7 +14,7 @@ def ena_get_sequence_xml(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> str:
     """
     Get metadata in XML format from ENA for Study, Sample, Run, Experiment, Analysis, or Taxon record...
 
@@ -31,12 +31,17 @@ def ena_get_sequence_xml(
 
     Returns
     -------
-    dict[str, Any]
+    str
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {k: v for k, v in {"accession": accession}.items() if v is not None}
     return get_shared_client().run_one_function(
-        {"name": "ena_get_sequence_xml", "arguments": {"accession": accession}},
+        {
+            "name": "ena_get_sequence_xml",
+            "arguments": _args,
+        },
         stream_callback=stream_callback,
         use_cache=use_cache,
         validate=validate,

@@ -37,7 +37,7 @@ def _http_get(
             },
             "required": ["query"],
         },
-        "settings": {"base_url": "https://rnacentral.org/api/v1", "timeout": 30},
+        "settings": {"base_url": "https://rnacentral.org/api/v1", "timeout": 60},
     },
 )
 class RNAcentralSearchTool:
@@ -60,6 +60,7 @@ class RNAcentralSearchTool:
                 url, headers={"Accept": "application/json"}, timeout=timeout
             )
             return {
+                "status": "success",
                 "source": "RNAcentral",
                 "endpoint": "rna",
                 "query": query,
@@ -68,6 +69,7 @@ class RNAcentralSearchTool:
             }
         except Exception as e:
             return {
+                "status": "error",
                 "error": str(e),
                 "source": "RNAcentral",
                 "endpoint": "rna",
@@ -88,7 +90,7 @@ class RNAcentralSearchTool:
             },
             "required": ["accession"],
         },
-        "settings": {"base_url": "https://rnacentral.org/api/v1", "timeout": 30},
+        "settings": {"base_url": "https://rnacentral.org/api/v1", "timeout": 60},
     },
 )
 class RNAcentralGetTool:
@@ -108,6 +110,7 @@ class RNAcentralGetTool:
                 url, headers={"Accept": "application/json"}, timeout=timeout
             )
             return {
+                "status": "success",
                 "source": "RNAcentral",
                 "endpoint": "rna/{accession}",
                 "accession": acc,
@@ -116,6 +119,7 @@ class RNAcentralGetTool:
             }
         except Exception as e:
             return {
+                "status": "error",
                 "error": str(e),
                 "source": "RNAcentral",
                 "endpoint": "rna/{accession}",

@@ -1,7 +1,7 @@
 """
 dbfetch_list_databases
 
-List all available databases in Dbfetch service. Returns list of database names and descriptions.
+List all available databases in Dbfetch service. Note: This returns a static list of common datab...
 """
 
 from typing import Any, Optional, Callable
@@ -13,9 +13,9 @@ def dbfetch_list_databases(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> str:
     """
-    List all available databases in Dbfetch service. Returns list of database names and descriptions.
+    List all available databases in Dbfetch service. Note: This returns a static list of common datab...
 
     Parameters
     ----------
@@ -29,12 +29,17 @@ def dbfetch_list_databases(
 
     Returns
     -------
-    dict[str, Any]
+    str
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {k: v for k, v in {}.items() if v is not None}
     return get_shared_client().run_one_function(
-        {"name": "dbfetch_list_databases", "arguments": {}},
+        {
+            "name": "dbfetch_list_databases",
+            "arguments": _args,
+        },
         stream_callback=stream_callback,
         use_cache=use_cache,
         validate=validate,

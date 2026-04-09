@@ -10,12 +10,11 @@ from ._shared_client import get_shared_client
 
 def PubMed_get_links(
     pmid: str,
-    api_key: Optional[str] = None,
     *,
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> Any:
     """
     Get external links (LinkOut) for a specific PubMed article by its PMID using elink. Returns URLs ...
 
@@ -23,8 +22,6 @@ def PubMed_get_links(
     ----------
     pmid : str
         PubMed ID (PMID) for which to retrieve external links (e.g., '19880848', '198...
-    api_key : str
-        Optional NCBI API key for higher rate limits.
     stream_callback : Callable, optional
         Callback for streaming output
     use_cache : bool, default False
@@ -34,12 +31,17 @@ def PubMed_get_links(
 
     Returns
     -------
-    dict[str, Any]
+    Any
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {k: v for k, v in {"pmid": pmid}.items() if v is not None}
     return get_shared_client().run_one_function(
-        {"name": "PubMed_get_links", "arguments": {"pmid": pmid, "api_key": api_key}},
+        {
+            "name": "PubMed_get_links",
+            "arguments": _args,
+        },
         stream_callback=stream_callback,
         use_cache=use_cache,
         validate=validate,

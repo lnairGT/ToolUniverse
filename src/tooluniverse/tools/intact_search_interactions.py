@@ -17,7 +17,7 @@ def intact_search_interactions(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> list[Any]:
     """
     Search for interactions in IntAct database using EBI Search API (IntAct domain). Supports searchi...
 
@@ -40,14 +40,25 @@ def intact_search_interactions(
 
     Returns
     -------
-    dict[str, Any]
+    list[Any]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "query": query,
+            "first": first,
+            "max": max,
+            "format": format,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "intact_search_interactions",
-            "arguments": {"query": query, "first": first, "max": max, "format": format},
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

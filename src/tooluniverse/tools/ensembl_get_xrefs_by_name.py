@@ -16,7 +16,7 @@ def ensembl_get_xrefs_by_name(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> list[Any]:
     """
     Get cross-references for an Ensembl object by its name/symbol. Returns mappings to external datab...
 
@@ -37,14 +37,24 @@ def ensembl_get_xrefs_by_name(
 
     Returns
     -------
-    dict[str, Any]
+    list[Any]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "name": name,
+            "species": species,
+            "external_db": external_db,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "ensembl_get_xrefs_by_name",
-            "arguments": {"name": name, "species": species, "external_db": external_db},
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

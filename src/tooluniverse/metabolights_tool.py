@@ -86,6 +86,15 @@ class MetaboLightsRESTTool(BaseTool):
             if "page" in args:
                 params["page"] = args["page"]
 
+        elif tool_name == "metabolights_get_study_data_files":
+            # Required parameters for data-files endpoint
+            if "search_pattern" in args:
+                params["search_pattern"] = args["search_pattern"]
+            if "file_match" in args:
+                params["file_match"] = str(args["file_match"]).lower()
+            if "folder_match" in args:
+                params["folder_match"] = str(args["folder_match"]).lower()
+
         return params
 
     def _extract_samples_from_study(self, study_id: str) -> Dict[str, Any]:
@@ -129,7 +138,10 @@ class MetaboLightsRESTTool(BaseTool):
             return samples_info
 
         except Exception as e:
-            return {"error": f"Failed to extract samples from study endpoint: {str(e)}"}
+            return {
+                "status": "error",
+                "error": f"Failed to extract samples from study endpoint: {str(e)}",
+            }
 
     def _extract_files_from_study(self, study_id: str) -> Dict[str, Any]:
         """Extract file information from study endpoint as fallback"""
@@ -189,7 +201,10 @@ class MetaboLightsRESTTool(BaseTool):
             return files_info
 
         except Exception as e:
-            return {"error": f"Failed to extract files from study endpoint: {str(e)}"}
+            return {
+                "status": "error",
+                "error": f"Failed to extract files from study endpoint: {str(e)}",
+            }
 
     def run(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the MetaboLights API call"""
@@ -301,6 +316,19 @@ class MetaboLightsRESTTool(BaseTool):
             elif isinstance(data, list):
                 extracted_data = data
                 count = len(data)
+
+            # Apply client-side pagination for list/search (API ignores size/page params)
+            if tool_name in (
+                "metabolights_list_studies",
+                "metabolights_search_studies",
+            ):
+                size = arguments.get("size", 20)
+                page = arguments.get("page", 0)
+                if isinstance(extracted_data, list):
+                    total = len(extracted_data)
+                    start = page * size
+                    extracted_data = extracted_data[start : start + size]
+                    count = len(extracted_data)
 
             response_data = {
                 "status": "success",

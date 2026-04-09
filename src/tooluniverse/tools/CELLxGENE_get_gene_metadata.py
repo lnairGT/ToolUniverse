@@ -18,7 +18,7 @@ def CELLxGENE_get_gene_metadata(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> Optional[list[Any]]:
     """
     Query gene (variable) metadata from CELLxGENE Census. Returns gene symbols, Ensembl IDs, feature ...
 
@@ -43,20 +43,26 @@ def CELLxGENE_get_gene_metadata(
 
     Returns
     -------
-    dict[str, Any]
+    Optional[list[Any]]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "operation": operation,
+            "organism": organism,
+            "var_value_filter": var_value_filter,
+            "column_names": column_names,
+            "census_version": census_version,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "CELLxGENE_get_gene_metadata",
-            "arguments": {
-                "operation": operation,
-                "organism": organism,
-                "var_value_filter": var_value_filter,
-                "column_names": column_names,
-                "census_version": census_version,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

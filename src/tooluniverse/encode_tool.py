@@ -136,10 +136,24 @@ class ENCODESearchTool:
 
         query: Dict[str, Any] = {"type": search_type, "format": "json"}
 
-        # Add all provided arguments to query
+        # Map user-friendly param names to ENCODE API field names
+        # ENCODE API uses dot-notation for nested fields
+        _param_map = {
+            "organism": "replicates.library.biosample.donor.organism.scientific_name",
+            "biosample_type": "biosample_ontology.classification",
+            # ENCODE API requires biosample_ontology.term_name, not biosample_term_name
+            "biosample_term": "biosample_ontology.term_name",
+            "biosample": "biosample_ontology.term_name",
+            "biosample_term_name": "biosample_ontology.term_name",
+            # ENCODE API requires target.label, not bare target
+            "target": "target.label",
+        }
+
+        # Add all provided arguments to query (remapping as needed)
         for key, value in arguments.items():
             if value is not None:
-                query[key] = value
+                mapped_key = _param_map.get(key, key)
+                query[mapped_key] = value
 
         url = f"{base}/search/?{urlencode(query, doseq=True)}"
         try:
@@ -147,6 +161,7 @@ class ENCODESearchTool:
                 url, headers={"Accept": "application/json"}, timeout=timeout
             )
             return {
+                "status": "success",
                 "source": "ENCODE",
                 "endpoint": "search",
                 "query": query,
@@ -155,6 +170,7 @@ class ENCODESearchTool:
             }
         except Exception as e:
             return {
+                "status": "error",
                 "error": str(e),
                 "source": "ENCODE",
                 "endpoint": "search",

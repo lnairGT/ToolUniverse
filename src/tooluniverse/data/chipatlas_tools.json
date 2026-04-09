@@ -50,20 +50,19 @@
           "default": "5000"
         }
       },
-      "required": ["operation"]
+      "required": []
     },
     "return_schema": {
       "type": "object",
+      "description": "Response object with enrichment analysis URL and parameters",
+      "additionalProperties": true,
       "properties": {
-        "status": {"type": "string"},
         "message": {"type": "string"},
-        "url": {"type": "string", "description": "ChIP-Atlas enrichment analysis URL"},
-        "parameters": {"type": "object"},
-        "instruction": {"type": "string"},
-        "note": {"type": "string"},
-        "error": {"type": "string"}
-      },
-      "additionalProperties": true
+        "genes": {"type": "array", "items": {"type": "string"}},
+        "distance_from_tss": {"type": "string"},
+        "url": {"type": "string"},
+        "note": {"type": "string"}
+      }
     },
     "test_examples": [
       {
@@ -107,32 +106,21 @@
           "maximum": 1000
         }
       },
-      "required": ["operation"]
+      "required": []
     },
     "return_schema": {
       "type": "object",
+      "description": "Response with experiment metadata including URLs and file info",
+      "additionalProperties": true,
       "properties": {
-        "status": {"type": "string"},
-        "num_experiments": {"type": "integer"},
-        "experiments": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "experiment_id": {"type": "string"},
-              "genome": {"type": "string"},
-              "track_type_class": {"type": "string"},
-              "track_type": {"type": "string"},
-              "cell_type_class": {"type": "string"},
-              "cell_type": {"type": "string"},
-              "title": {"type": "string"}
-            }
-          }
-        },
         "message": {"type": "string"},
-        "error": {"type": "string"}
-      },
-      "additionalProperties": true
+        "metadata_file_url": {"type": "string"},
+        "web_search_url": {"type": "string"},
+        "file_size": {"type": "string"},
+        "total_experiments": {"type": "string"},
+        "filters_requested": {"type": "object", "additionalProperties": true},
+        "recommendation": {"type": "string"}
+      }
     },
     "test_examples": [
       {
@@ -178,20 +166,19 @@
           "default": "05"
         }
       },
-      "required": ["operation", "experiment_id"]
+      "required": ["experiment_id"]
     },
     "return_schema": {
       "type": "object",
+      "description": "Response with download URL for peak data",
+      "additionalProperties": true,
       "properties": {
-        "status": {"type": "string"},
         "experiment_id": {"type": "string"},
         "genome": {"type": "string"},
         "format": {"type": "string"},
-        "url": {"type": "string", "description": "Download URL"},
-        "message": {"type": "string"},
-        "error": {"type": "string"}
-      },
-      "additionalProperties": true
+        "url": {"type": "string"},
+        "message": {"type": "string"}
+      }
     },
     "test_examples": [
       {
@@ -229,12 +216,13 @@
           "default": "hg38"
         }
       },
-      "required": ["operation"]
+      "required": []
     },
     "return_schema": {
       "type": "object",
+      "description": "Response with search results for datasets",
+      "additionalProperties": true,
       "properties": {
-        "status": {"type": "string"},
         "search_key": {"type": "string"},
         "search_value": {"type": "string"},
         "genome": {"type": "string"},
@@ -245,15 +233,14 @@
             "type": "object",
             "properties": {
               "genome": {"type": "string"},
+              "class": {"type": "string"},
               "name": {"type": "string"},
               "num_experiments": {"type": "string"},
-              "experiment_ids": {"type": "array"}
+              "experiment_ids": {"type": "array", "items": {"type": "string"}}
             }
           }
-        },
-        "error": {"type": "string"}
-      },
-      "additionalProperties": true
+        }
+      }
     },
     "test_examples": [
       {

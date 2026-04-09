@@ -102,20 +102,27 @@ class UniProtRESTTool(BaseTool):
 
             # Return single item if only one match, otherwise return list
             if len(extracted_data) == 0:
-                return {"error": f"No data found for JSONPath: {extract_path}"}
+                return {
+                    "status": "error",
+                    "error": f"No data found for JSONPath: {extract_path}",
+                }
             elif len(extracted_data) == 1:
                 return extracted_data[0]
             else:
                 return extracted_data
 
         except ImportError:
-            return {"error": "jsonpath_ng library is required for data extraction"}
+            return {
+                "status": "error",
+                "error": "jsonpath_ng library is required for data extraction",
+            }
         except Exception as e:
             return {
+                "status": "error",
                 "error": (
                     f"Failed to extract UniProt fields using "
                     f"JSONPath '{extract_path}': {e}"
-                )
+                ),
             }
 
     def _handle_search(self, arguments: Dict[str, Any]) -> Any:
@@ -139,12 +146,30 @@ class UniProtRESTTool(BaseTool):
         # Build query string
         query_parts = [query]
         if organism:
-            # Support common organism names
+            # Support common organism names (both common names and scientific names)
             organism_map = {
                 "human": "9606",
+                "homo sapiens": "9606",
                 "mouse": "10090",
+                "mus musculus": "10090",
                 "rat": "10116",
+                "rattus norvegicus": "10116",
                 "yeast": "559292",
+                "saccharomyces cerevisiae": "559292",
+                "zebrafish": "7955",
+                "danio rerio": "7955",
+                "fruitfly": "7227",
+                "drosophila melanogaster": "7227",
+                "c. elegans": "6239",
+                "caenorhabditis elegans": "6239",
+                "arabidopsis": "3702",
+                "arabidopsis thaliana": "3702",
+                "pig": "9823",
+                "sus scrofa": "9823",
+                "cow": "9913",
+                "bos taurus": "9913",
+                "rabbit": "9986",
+                "oryctolagus cuniculus": "9986",
             }
             taxon_id = organism_map.get(organism.lower(), organism)
 
@@ -182,9 +207,12 @@ class UniProtRESTTool(BaseTool):
             # If custom fields requested, return raw API response for flexibility
             if fields and isinstance(fields, list):
                 return {
-                    "total_results": data.get("resultsFound", 0),
-                    "returned": len(results),
-                    "results": results,  # Return raw results when custom fields used
+                    "status": "success",
+                    "data": {
+                        "total_results": data.get("resultsFound", 0),
+                        "returned": len(results),
+                        "results": results,
+                    },
                 }
 
             # Otherwise, use formatted extraction logic
@@ -226,17 +254,24 @@ class UniProtRESTTool(BaseTool):
                 formatted_results.append(formatted_entry)
 
             return {
-                "total_results": data.get("resultsFound", len(results)),
-                "returned": len(results),
-                "results": formatted_results,
+                "status": "success",
+                "data": {
+                    "total_results": data.get("resultsFound", len(results)),
+                    "returned": len(results),
+                    "results": formatted_results,
+                },
             }
 
         except requests.exceptions.Timeout:
-            return {"error": "Request to UniProt API timed out"}
+            return {"status": "error", "error": "Request to UniProt API timed out"}
         except requests.exceptions.RequestException as e:
-            return {"error": f"Request to UniProt API failed: {e}"}
+            return {"status": "error", "error": f"Request to UniProt API failed: {e}"}
         except ValueError as e:
-            return {"error": f"Failed to parse JSON response: {e}"}
+            return {
+                "status": "error",
+                "error": f"Failed to parse JSON response: {e}",
+                "retryable": True,
+            }
 
     def _handle_id_mapping(self, arguments: Dict[str, Any]) -> Any:
         """Handle ID mapping requests"""
@@ -258,7 +293,6 @@ class UniProtRESTTool(BaseTool):
             "Ensembl": "Ensembl",
             "Gene_Name": "Gene_Name",
             "RefSeq_Protein": "RefSeq_Protein_ID",
-            "PDB": "PDB_ID",
             "EMBL": "EMBL_ID",
             "UniProtKB": "UniProtKB",
             "UniProtKB_AC-ID": "UniProtKB_AC-ID",
@@ -283,83 +317,98 @@ class UniProtRESTTool(BaseTool):
             job_id = job_data.get("jobId")
 
             if not job_id:
-                return {"error": "Failed to get job ID from UniProt ID mapping"}
+                return {
+                    "status": "error",
+                    "data": {"error": "Failed to get job ID from UniProt ID mapping"},
+                }
 
             # Step 2: Poll for job completion
             status_url = f"https://rest.uniprot.org/idmapping/status/{job_id}"
             results_url = f"https://rest.uniprot.org/idmapping/results/{job_id}"
 
+            raw_results = None
             start_time = time.time()
             while time.time() - start_time < max_wait_time:
                 status_resp = requests.get(status_url, timeout=self.timeout)
                 status_data = status_resp.json()
 
-                if status_data.get("status") == "FINISHED":
-                    # Step 3: Retrieve results
+                job_status = status_data.get("jobStatus") or status_data.get("status")
+
+                if job_status == "FINISHED":
+                    # Explicit FINISHED status — fetch results separately
                     results_resp = requests.get(results_url, timeout=self.timeout)
-                    results_data = results_resp.json()
-
-                    # Format results
-                    formatted_results = []
-                    failed = []
-
-                    # Extract mappings
-                    results = results_data.get("results", [])
-                    for result in results:
-                        from_value = result.get("from", "")
-                        to_values = result.get("to", {}).get("results", [])
-
-                        if to_values:
-                            for to_item in to_values:
-                                to_info = to_item.get("to", {})
-                                gene_names = to_info.get("geneNames", [])
-                                gene_name = ""
-                                if gene_names:
-                                    gene_name = gene_names[0].get("value", "")
-
-                                formatted_results.append(
-                                    {
-                                        "from": from_value,
-                                        "to": {
-                                            "accession": to_info.get(
-                                                "primaryAccession", ""
-                                            ),
-                                            "id": to_info.get("uniProtkbId", ""),
-                                            "gene_name": gene_name,
-                                        },
-                                    }
-                                )
-                        else:
-                            failed.append(from_value)
-
+                    raw_results = results_resp.json().get("results", [])
+                    break
+                elif "results" in status_data:
+                    # Feature-26A-13: UniProt status endpoint redirected (303) to
+                    # results page; results are embedded directly in status_data.
+                    raw_results = status_data["results"]
+                    break
+                elif job_status in ("FAILED", "ERROR"):
                     return {
-                        "mapped_count": len(formatted_results),
-                        "results": formatted_results,
-                        "failed": list(set(failed)) if failed else [],
+                        "status": "error",
+                        "error": "ID mapping job failed",
                     }
-                elif status_data.get("status") == "FAILED":
-                    return {"error": "ID mapping job failed"}
 
                 time.sleep(1)  # Wait 1 second before next poll
 
-            return {
-                "status": "running",
-                "job_id": job_id,
-                "status_url": status_url,
-                "results_url": results_url,
-                "note": (
-                    "ID mapping job is still running. Poll status_url until "
-                    "status == FINISHED, then fetch results_url."
-                ),
-                "max_wait_time": max_wait_time,
+            if raw_results is None:
+                return {
+                    "status": "error",
+                    "error": (
+                        f"UniProt ID mapping job did not complete within "
+                        f"{max_wait_time}s. Try again or reduce the number of IDs."
+                    ),
+                }
+
+            # Step 3: Parse results
+            # UniProt returns `to` as a plain string (for simple DB mappings like
+            # PDB) or as a full UniProtKB entry dict. Flatten both into a simple
+            # from/to pair.
+            formatted_results = []
+            for result in raw_results:
+                from_value = result.get("from", "")
+                to_value = result.get("to")
+                if isinstance(to_value, dict):
+                    # UniProtKB entry: extract accession and gene name
+                    gene_names = to_value.get("geneNames", [])
+                    gene_name = gene_names[0].get("value", "") if gene_names else ""
+                    formatted_results.append(
+                        {
+                            "from": from_value,
+                            "to": {
+                                "accession": to_value.get("primaryAccession", ""),
+                                "id": to_value.get("uniProtkbId", ""),
+                                "gene_name": gene_name,
+                            },
+                        }
+                    )
+                elif to_value is not None:
+                    # Simple string mapping (PDB, Ensembl, etc.)
+                    formatted_results.append({"from": from_value, "to": str(to_value)})
+
+            result_data = {
+                "mapped_count": len(formatted_results),
+                "results": formatted_results,
+                "failed_ids": [],
             }
+            return {"status": "success", "data": result_data}
 
         except requests.exceptions.Timeout:
-            return {"error": "Request to UniProt API timed out"}
+            return {
+                "status": "error",
+                "data": {"error": "Request to UniProt API timed out"},
+            }
         except requests.exceptions.RequestException as e:
-            return {"error": f"Request to UniProt API failed: {e}"}
+            return {
+                "status": "error",
+                "data": {"error": f"Request to UniProt API failed: {e}"},
+            }
         except ValueError as e:
-            return {"error": f"Failed to parse JSON response: {e}"}
+            return {
+                "status": "error",
+                "data": {"error": f"Failed to parse JSON response: {e}"},
+            }
 
     def _handle_uniref_search(self, arguments: Dict[str, Any]) -> Any:
         """Handle UniRef search queries"""
@@ -388,16 +437,23 @@ class UniProtRESTTool(BaseTool):
 
             results = data.get("results", [])
             return {
-                "total_results": data.get("resultsFound", len(results)),
-                "returned": len(results),
-                "results": results,
+                "status": "success",
+                "data": {
+                    "total_results": data.get("resultsFound", len(results)),
+                    "returned": len(results),
+                    "results": results,
+                },
             }
         except requests.exceptions.Timeout:
-            return {"error": "Request to UniProt API timed out"}
+            return {"status": "error", "error": "Request to UniProt API timed out"}
         except requests.exceptions.RequestException as e:
-            return {"error": f"Request to UniProt API failed: {e}"}
+            return {"status": "error", "error": f"Request to UniProt API failed: {e}"}
         except ValueError as e:
-            return {"error": f"Failed to parse JSON response: {e}"}
+            return {
+                "status": "error",
+                "error": f"Failed to parse JSON response: {e}",
+                "retryable": True,
+            }
 
     def _handle_uniparc_search(self, arguments: Dict[str, Any]) -> Any:
         """Handle UniParc search queries"""
@@ -417,16 +473,23 @@ class UniProtRESTTool(BaseTool):
 
             results = data.get("results", [])
             return {
-                "total_results": data.get("resultsFound", len(results)),
-                "returned": len(results),
-                "results": results,
+                "status": "success",
+                "data": {
+                    "total_results": data.get("resultsFound", len(results)),
+                    "returned": len(results),
+                    "results": results,
+                },
             }
         except requests.exceptions.Timeout:
-            return {"error": "Request to UniProt API timed out"}
+            return {"status": "error", "error": "Request to UniProt API timed out"}
         except requests.exceptions.RequestException as e:
-            return {"error": f"Request to UniProt API failed: {e}"}
+            return {"status": "error", "error": f"Request to UniProt API failed: {e}"}
         except ValueError as e:
-            return {"error": f"Failed to parse JSON response: {e}"}
+            return {
+                "status": "error",
+                "error": f"Failed to parse JSON response: {e}",
+                "retryable": True,
+            }
 
     def run(self, arguments: Dict[str, Any]) -> Any:
         # Check if this is a search request
@@ -448,16 +511,21 @@ class UniProtRESTTool(BaseTool):
             resp = requests.get(url, timeout=self.timeout)
             if resp.status_code != 200:
                 return {
+                    "status": "error",
                     "error": (f"UniProt API returned status code: {resp.status_code}"),
                     "detail": resp.text,
                 }
             data = resp.json()
         except requests.exceptions.Timeout:
-            return {"error": "Request to UniProt API timed out"}
+            return {"status": "error", "error": "Request to UniProt API timed out"}
         except requests.exceptions.RequestException as e:
-            return {"error": f"Request to UniProt API failed: {e}"}
+            return {"status": "error", "error": f"Request to UniProt API failed: {e}"}
         except ValueError as e:
-            return {"error": f"Failed to parse JSON response: {e}"}
+            return {
+                "status": "error",
+                "error": f"Failed to parse JSON response: {e}",
+                "retryable": True,
+            }
 
         # If extract_path is configured, extract the corresponding subset
         if self.extract_path:
@@ -465,7 +533,10 @@ class UniProtRESTTool(BaseTool):
 
             # Handle empty results
             if isinstance(result, list) and len(result) == 0:
-                return {"error": f"No data found for path: {self.extract_path}"}
+                return {
+                    "status": "error",
+                    "error": f"No data found for path: {self.extract_path}",
+                }
             elif isinstance(result, dict) and "error" in result:
                 return result
 

@@ -41,33 +41,8 @@
             }
         ],
         "return_schema": {
-            "type": "object",
-            "properties": {
-                "study_id": {
-                    "type": "string",
-                    "description": "Study identifier"
-                },
-                "study_title": {
-                    "type": "string",
-                    "description": "Title of the study"
-                },
-                "subject_species": {
-                    "type": "string",
-                    "description": "Species studied"
-                },
-                "institute": {
-                    "type": "string",
-                    "description": "Research institute"
-                },
-                "analysis_type": {
-                    "type": "string",
-                    "description": "Type of analysis (NMR, LC-MS, etc.)"
-                },
-                "num_metabolites": {
-                    "type": "integer",
-                    "description": "Number of metabolites in study"
-                }
-            }
+            "type": ["object", "array", "string"],
+            "description": "Study information object, empty array if not found, or text response"
         }
     },
     {
@@ -78,7 +53,11 @@
             "properties": {
                 "input_value": {
                     "type": "string",
-                    "description": "Compound/metabolite name to search (e.g., 'Glucose', 'Cholesterol', 'Palmitic acid')."
+                    "description": "Compound/metabolite name to search (e.g., 'Glucose', 'Cholesterol', 'Palmitic acid'). Aliases: compound_name, name."
+                },
+                "compound_name": {
+                    "type": "string",
+                    "description": "Alias for input_value."
                 },
                 "output_item": {
                     "type": "string",
@@ -86,9 +65,7 @@
                     "default": "all"
                 }
             },
-            "required": [
-                "input_value"
-            ]
+            "required": []
         },
         "fields": {
             "context": "refmet",
@@ -244,7 +221,7 @@
         "return_schema": {
             "type": "object",
             "properties": {
-                "refmet_name": {
+                "name": {
                     "type": "string",
                     "description": "Standardized RefMet name"
                 },
@@ -290,6 +267,12 @@
                     "type": "number",
                     "description": "Mass tolerance in Daltons for the search.",
                     "default": 0.1
+                },
+                "database": {
+                    "type": "string",
+                    "description": "Database to search: 'MB' (Metabolomics Workbench, default), 'LIPIDS', or 'REFMET'.",
+                    "enum": ["MB", "LIPIDS", "REFMET"],
+                    "default": "MB"
                 }
             },
             "required": [
@@ -313,35 +296,8 @@
             }
         ],
         "return_schema": {
-            "type": "object",
-            "properties": {
-                "matches": {
-                    "type": "array",
-                    "description": "List of matching metabolites",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": "string"
-                            },
-                            "formula": {
-                                "type": "string"
-                            },
-                            "exactmass": {
-                                "type": "number"
-                            },
-                            "delta": {
-                                "type": "number",
-                                "description": "Mass difference from query"
-                            }
-                        }
-                    }
-                },
-                "data": {
-                    "type": "string",
-                    "description": "Raw response if not JSON"
-                }
-            }
+            "type": ["object", "string"],
+            "description": "Metabolite matches object or error message string"
         }
     },
     {
@@ -379,31 +335,8 @@
             }
         ],
         "return_schema": {
-            "type": "object",
-            "properties": {
-                "matches": {
-                    "type": "array",
-                    "description": "List of metabolites matching the exact mass",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": "string"
-                            },
-                            "formula": {
-                                "type": "string"
-                            },
-                            "exactmass": {
-                                "type": "number"
-                            }
-                        }
-                    }
-                },
-                "data": {
-                    "type": "string",
-                    "description": "Raw response if not JSON"
-                }
-            }
+            "type": ["object", "array"],
+            "description": "Metabolite matches object or empty array if no matches found"
         }
     }
 ]

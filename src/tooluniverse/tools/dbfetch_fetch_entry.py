@@ -16,7 +16,7 @@ def dbfetch_fetch_entry(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> str:
     """
     Fetch a single database entry by ID from various databases (UniProt, PDB, etc.) in specified form...
 
@@ -37,14 +37,18 @@ def dbfetch_fetch_entry(
 
     Returns
     -------
-    dict[str, Any]
+    str
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v for k, v in {"db": db, "id": id, "format": format}.items() if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "dbfetch_fetch_entry",
-            "arguments": {"db": db, "id": id, "format": format},
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

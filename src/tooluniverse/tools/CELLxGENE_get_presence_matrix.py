@@ -16,7 +16,7 @@ def CELLxGENE_get_presence_matrix(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> Any:
     """
     Get feature presence matrix showing which genes are measured in which datasets. Returns sparse ma...
 
@@ -37,18 +37,24 @@ def CELLxGENE_get_presence_matrix(
 
     Returns
     -------
-    dict[str, Any]
+    Any
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "operation": operation,
+            "organism": organism,
+            "census_version": census_version,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "CELLxGENE_get_presence_matrix",
-            "arguments": {
-                "operation": operation,
-                "organism": organism,
-                "census_version": census_version,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

@@ -45,7 +45,7 @@ class MyGeneTool(BaseTool):
         elif operation == "query_batch":
             return self._query_batch(arguments)
         else:
-            return {"error": f"Unknown operation: {operation}"}
+            return {"status": "error", "error": f"Unknown operation: {operation}"}
 
     def _query_genes(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -59,7 +59,7 @@ class MyGeneTool(BaseTool):
         size = arguments.get("size", 10)
 
         if not query:
-            return {"error": "Query parameter is required"}
+            return {"status": "error", "error": "Query parameter is required"}
 
         params = {
             "q": query,
@@ -73,9 +73,12 @@ class MyGeneTool(BaseTool):
                 f"{MYGENE_BASE_URL}/query", params=params, timeout=self.timeout
             )
             response.raise_for_status()
-            return response.json()
+            return {"status": "success", "data": response.json()}
         except requests.RequestException as e:
-            return {"error": f"MyGene.info API request failed: {str(e)}"}
+            return {
+                "status": "error",
+                "error": f"MyGene.info API request failed: {str(e)}",
+            }
 
     def _get_gene(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -89,7 +92,7 @@ class MyGeneTool(BaseTool):
         )
 
         if not gene_id:
-            return {"error": "gene_id parameter is required"}
+            return {"status": "error", "error": "gene_id parameter is required"}
 
         params = {"fields": fields}
 
@@ -98,9 +101,12 @@ class MyGeneTool(BaseTool):
                 f"{MYGENE_BASE_URL}/gene/{gene_id}", params=params, timeout=self.timeout
             )
             response.raise_for_status()
-            return response.json()
+            return {"status": "success", "data": response.json()}
         except requests.RequestException as e:
-            return {"error": f"MyGene.info API request failed: {str(e)}"}
+            return {
+                "status": "error",
+                "error": f"MyGene.info API request failed: {str(e)}",
+            }
 
     def _query_batch(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -113,7 +119,10 @@ class MyGeneTool(BaseTool):
         species = arguments.get("species", "human")
 
         if not gene_ids:
-            return {"error": "gene_ids parameter is required (list of gene IDs)"}
+            return {
+                "status": "error",
+                "error": "gene_ids parameter is required (list of gene IDs)",
+            }
 
         # Convert list to comma-separated string if needed
         if isinstance(gene_ids, list):
@@ -133,9 +142,12 @@ class MyGeneTool(BaseTool):
                 f"{MYGENE_BASE_URL}/query", data=data, timeout=self.timeout
             )
             response.raise_for_status()
-            return {"results": response.json()}
+            return {"status": "success", "data": {"results": response.json()}}
         except requests.RequestException as e:
-            return {"error": f"MyGene.info API request failed: {str(e)}"}
+            return {
+                "status": "error",
+                "error": f"MyGene.info API request failed: {str(e)}",
+            }
 
 
 @register_tool("MyVariantTool")
@@ -165,7 +177,7 @@ class MyVariantTool(BaseTool):
         elif operation == "get_variant":
             return self._get_variant(arguments)
         else:
-            return {"error": f"Unknown operation: {operation}"}
+            return {"status": "error", "error": f"Unknown operation: {operation}"}
 
     def _query_variants(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -178,7 +190,7 @@ class MyVariantTool(BaseTool):
         size = arguments.get("size", 10)
 
         if not query:
-            return {"error": "Query parameter is required"}
+            return {"status": "error", "error": "Query parameter is required"}
 
         params = {"q": query, "fields": fields, "size": min(size, 100)}
 
@@ -187,9 +199,12 @@ class MyVariantTool(BaseTool):
                 f"{self.MYVARIANT_BASE_URL}/query", params=params, timeout=self.timeout
             )
             response.raise_for_status()
-            return response.json()
+            return {"status": "success", "data": response.json()}
         except requests.RequestException as e:
-            return {"error": f"MyVariant.info API request failed: {str(e)}"}
+            return {
+                "status": "error",
+                "error": f"MyVariant.info API request failed: {str(e)}",
+            }
 
     def _get_variant(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -201,7 +216,10 @@ class MyVariantTool(BaseTool):
         fields = arguments.get("fields", "dbsnp,clinvar,cadd,gnomad_genome,dbnsfp")
 
         if not variant_id:
-            return {"error": "variant_id parameter is required (HGVS format)"}
+            return {
+                "status": "error",
+                "error": "variant_id parameter is required (HGVS format)",
+            }
 
         params = {"fields": fields}
 
@@ -212,9 +230,12 @@ class MyVariantTool(BaseTool):
                 timeout=self.timeout,
             )
             response.raise_for_status()
-            return response.json()
+            return {"status": "success", "data": response.json()}
         except requests.RequestException as e:
-            return {"error": f"MyVariant.info API request failed: {str(e)}"}
+            return {
+                "status": "error",
+                "error": f"MyVariant.info API request failed: {str(e)}",
+            }
 
 
 @register_tool("MyChemTool")
@@ -244,7 +265,7 @@ class MyChemTool(BaseTool):
         elif operation == "get_chemical":
             return self._get_chemical(arguments)
         else:
-            return {"error": f"Unknown operation: {operation}"}
+            return {"status": "error", "error": f"Unknown operation: {operation}"}
 
     def _query_chemicals(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -257,7 +278,7 @@ class MyChemTool(BaseTool):
         size = arguments.get("size", 10)
 
         if not query:
-            return {"error": "Query parameter is required"}
+            return {"status": "error", "error": "Query parameter is required"}
 
         params = {"q": query, "fields": fields, "size": min(size, 100)}
 
@@ -266,9 +287,12 @@ class MyChemTool(BaseTool):
                 f"{self.MYCHEM_BASE_URL}/query", params=params, timeout=self.timeout
             )
             response.raise_for_status()
-            return response.json()
+            return {"status": "success", "data": response.json()}
         except requests.RequestException as e:
-            return {"error": f"MyChem.info API request failed: {str(e)}"}
+            return {
+                "status": "error",
+                "error": f"MyChem.info API request failed: {str(e)}",
+            }
 
     def _get_chemical(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -280,7 +304,10 @@ class MyChemTool(BaseTool):
         fields = arguments.get("fields", "drugbank,chebi,pubchem,chembl,drugcentral")
 
         if not chem_id:
-            return {"error": "chem_id parameter is required (InChIKey recommended)"}
+            return {
+                "status": "error",
+                "error": "chem_id parameter is required (InChIKey recommended)",
+            }
 
         params = {"fields": fields}
 
@@ -291,6 +318,9 @@ class MyChemTool(BaseTool):
                 timeout=self.timeout,
             )
             response.raise_for_status()
-            return response.json()
+            return {"status": "success", "data": response.json()}
         except requests.RequestException as e:
-            return {"error": f"MyChem.info API request failed: {str(e)}"}
+            return {
+                "status": "error",
+                "error": f"MyChem.info API request failed: {str(e)}",
+            }

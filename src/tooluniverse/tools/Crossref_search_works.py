@@ -10,13 +10,13 @@ from ._shared_client import get_shared_client
 
 def Crossref_search_works(
     query: str,
-    limit: int,
-    filter: str,
+    limit: Optional[int] = 10,
+    filter: Optional[str] = None,
     *,
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> list[Any]:
     """
     Search Crossref Works API for scholarly articles, publications, and research outputs by keyword. ...
 
@@ -37,14 +37,20 @@ def Crossref_search_works(
 
     Returns
     -------
-    dict[str, Any]
+    list[Any]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {"query": query, "limit": limit, "filter": filter}.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "Crossref_search_works",
-            "arguments": {"query": query, "limit": limit, "filter": filter},
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

@@ -8,7 +8,7 @@ This module provides tools for accessing the ChEMBL database:
 
 import requests
 from urllib.parse import quote
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 # from rdkit import Chem
 from .base_tool import BaseTool
@@ -41,9 +41,23 @@ class ChEMBLRESTTool(BaseTool):
 
         if endpoint_template:
             url = endpoint_template
+            # Feature-120B-003: normalize molecule_chembl_id → chembl_id for URL template
+            if (
+                "{chembl_id}" in url
+                and "chembl_id" not in args
+                and "molecule_chembl_id" in args
+            ):
+                args = dict(args, chembl_id=args["molecule_chembl_id"])
             # Replace placeholders in URL
             for k, v in args.items():
                 url = url.replace(f"{{{k}}}", str(v))
+            # Feature-31A-03 fix: /drug.json does not support pref_name__icontains filtering
+            # (ChEMBL server silently ignores it). When a name query is given, route to
+            # /molecule.json which supports full text filtering.
+            if url.endswith("/drug.json") and (
+                args.get("query") or args.get("q") or args.get("pref_name__contains")
+            ):
+                url = url.replace("/drug.json", "/molecule.json")
             # If URL doesn't start with http, prepend base_url
             if not url.startswith("http"):
                 url = self.base_url + url
@@ -51,7 +65,8 @@ class ChEMBLRESTTool(BaseTool):
 
         # Build URL based on tool name patterns
         if tool_name.startswith("ChEMBL_get_molecule"):
-            chembl_id = args.get("chembl_id", "")
+            # Feature-120B-003: accept molecule_chembl_id as alias for chembl_id
+            chembl_id = args.get("chembl_id") or args.get("molecule_chembl_id", "")
             if chembl_id:
                 return f"{self.base_url}/molecule/{chembl_id}.json"
         elif tool_name.startswith("ChEMBL_get_target"):
@@ -80,6 +95,9 @@ class ChEMBLRESTTool(BaseTool):
 
         # ChEMBL API uses query parameters for filtering
         # Common parameters: limit, offset, format, ordering
+        # max_results is an alias for limit
+        if "max_results" in args and "limit" not in args:
+            params["limit"] = args["max_results"]
         if "limit" in args:
             params["limit"] = args["limit"]
         if "offset" in args:
@@ -87,7 +105,23 @@ class ChEMBLRESTTool(BaseTool):
         if "format" in args:
             params["format"] = args["format"]
         else:
-            params["format"] = "json"
+            # Feature-26B-07: for image endpoints, apply default "svg" from the JSON
+            # schema rather than "json" (image endpoints don't accept format=json).
+            tool_name = self.tool_config.get("name", "")
+            endpoint = self.tool_config.get("fields", {}).get("endpoint", "")
+            is_image = (
+                "get_molecule_image" in tool_name.lower() or "/image/" in endpoint
+            )
+            if is_image:
+                # Apply the JSON schema default for image format
+                schema_props = (
+                    self.tool_config.get("parameter", {})
+                    .get("properties", {})
+                    .get("format", {})
+                )
+                params["format"] = schema_props.get("default", "svg")
+            else:
+                params["format"] = "json"
         # Optional field projection to reduce payload size on heavy endpoints.
         # ChEMBL supports projection via the `only` query parameter.
         # We accept ToolUniverse argument name `fields` and map it to `only`.
@@ -103,8 +137,59 @@ class ChEMBLRESTTool(BaseTool):
         if "ordering" in args:
             params["ordering"] = args["ordering"]
 
+        # Feature-26B-03/13: Map `q` to `pref_name__icontains` so that intuitive
+        # text searches work (ChEMBL uses field__lookup syntax, not q=).
+        # Also map `query` and `pref_name__contains` as aliases.
+        name_query = (
+            args.get("q") or args.get("query") or args.get("pref_name__contains")
+        )
+        if name_query is not None:
+            params["pref_name__icontains"] = name_query
+
+        # Feature-30B-05: Map `drug_chembl_id` to `molecule_chembl_id__exact` so
+        # ChEMBL_get_drug_mechanisms accepts the same ID param as ChEMBL_get_drug.
+        # Feature-32B-07: Also accept `molecule_chembl_id` as an alias.
+        # Feature-39A-01: Also accept `chembl_id` as a common alias.
+        # Feature-40B-02: For mechanism endpoints, use `parent_molecule_chembl_id` — the
+        # /mechanism.json endpoint indexes records by the parent/active molecule, not
+        # individual salt/prodrug forms. molecule_chembl_id__exact returns 0 results.
+        drug_id = (
+            args.get("drug_chembl_id")
+            or args.get("molecule_chembl_id")
+            or args.get("chembl_id")
+        )
+        tool_name_local = self.tool_config.get("name", "")
+        if drug_id is not None:
+            if tool_name_local in (
+                "ChEMBL_get_drug_mechanisms",
+                "ChEMBL_search_mechanisms",
+            ):
+                params["parent_molecule_chembl_id"] = drug_id
+            else:
+                params["molecule_chembl_id__exact"] = drug_id
+
+        # Map target_chembl_id and assay_chembl_id to __exact API params
+        # when used as query filters (not as URL path components)
+        target_id = args.get("target_chembl_id")
+        # Feature-120B-001: only exclude ChEMBL_get_target (single lookup), not
+        # ChEMBL_get_target_activities or ChEMBL_get_target_assays which need the filter
+        if target_id is not None and tool_name_local not in (
+            "ChEMBL_get_target",
+            "ChEMBL_search_targets",
+        ):
+            params["target_chembl_id__exact"] = target_id
+
+        assay_id = args.get("assay_chembl_id")
+        if assay_id is not None and not tool_name_local.startswith("ChEMBL_get_assay"):
+            params["assay_chembl_id__exact"] = assay_id
+
+        # Feature-79A: mechanism_of_action__contains → __icontains for case-insensitive search
+        moa_filter = args.get("mechanism_of_action__contains")
+        if moa_filter is not None:
+            params["mechanism_of_action__icontains"] = moa_filter
+
         # Add any filter parameters (ChEMBL uses field__filter syntax)
-        # e.g., molecule_chembl_id__exact, pref_name__contains
+        # e.g., molecule_chembl_id__exact, pref_name__icontains
         for key, value in args.items():
             if (
                 key
@@ -115,11 +200,18 @@ class ChEMBLRESTTool(BaseTool):
                     "fields",
                     "only",
                     "ordering",
+                    "q",  # handled above: mapped to pref_name__icontains
+                    "query",  # handled above: alias for q
+                    "pref_name__contains",  # handled above: alias for pref_name__icontains
+                    "mechanism_of_action__contains",  # handled above: mapped to __icontains
+                    "max_results",  # handled above: alias for limit
                     "chembl_id",
-                    "target_chembl_id",
-                    "assay_chembl_id",
+                    "target_chembl_id",  # handled above: mapped to target_chembl_id__exact
+                    "assay_chembl_id",  # handled above: mapped to assay_chembl_id__exact
                     "activity_id",
-                    "drug_chembl_id",
+                    "drug_chembl_id",  # handled above: mapped to molecule_chembl_id__exact / parent_molecule_chembl_id
+                    "molecule_chembl_id",  # handled above: alias for drug_chembl_id
+                    "drug_name",  # Feature-40B-03: not a valid ChEMBL API param; caught in run() with error
                 ]
                 and value is not None
             ):
@@ -127,11 +219,194 @@ class ChEMBLRESTTool(BaseTool):
 
         return params
 
+    def _extract_parent_chembl_id(self, mol: dict) -> Optional[str]:
+        """Extract the parent ChEMBL ID from a molecule record."""
+        mol_id = mol.get("molecule_chembl_id")
+        # Feature-45B-07: prefer the parent compound over salt/formulation entries.
+        hierarchy = mol.get("molecule_hierarchy") or {}
+        parent_id = hierarchy.get("parent_chembl_id")
+        if parent_id and parent_id != mol_id:
+            return parent_id
+        return mol_id
+
+    def _lookup_chembl_id_by_name(self, drug_name: str) -> Optional[str]:
+        """Look up a ChEMBL molecule ID by preferred name (case-insensitive).
+
+        Feature-79B-001: Uses icontains first (most reliable), then iexact as
+        fallback. The iexact and search endpoints frequently timeout for newer drugs.
+        Returns the ChEMBL ID of the first matching molecule, or None.
+        """
+        base = f"{self.base_url}/molecule.json"
+        headers = {"Accept": "application/json", "User-Agent": "ToolUniverse/1.0"}
+        # Try icontains first (faster/more reliable than iexact on ChEMBL API)
+        for lookup_params in (
+            {"pref_name__icontains": drug_name, "format": "json", "limit": 5},
+            {"pref_name__iexact": drug_name, "format": "json", "limit": 5},
+        ):
+            try:
+                resp = requests.get(
+                    base, params=lookup_params, headers=headers, timeout=20
+                )
+                resp.raise_for_status()
+                molecules = resp.json().get("molecules", [])
+                if molecules:
+                    # Prefer exact name match when icontains returns multiple
+                    for mol in molecules:
+                        if (mol.get("pref_name") or "").lower() == drug_name.lower():
+                            return self._extract_parent_chembl_id(mol)
+                    return self._extract_parent_chembl_id(molecules[0])
+            except Exception:
+                pass
+        return None
+
     def run(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the ChEMBL API call"""
         try:
             url = self._build_url(arguments)
             params = self._build_params(arguments)
+            tool_name = self.tool_config.get("name", "")
+
+            # Feature-39A-01: ChEMBL_get_drug_mechanisms — validate at least one molecule
+            # filter is present; without it the ChEMBL API returns all mechanisms
+            # in the database (misleading success with random data).
+            if tool_name == "ChEMBL_get_drug_mechanisms":
+                mol_id = (
+                    arguments.get("drug_chembl_id")
+                    or arguments.get("molecule_chembl_id")
+                    or arguments.get("chembl_id")
+                    or arguments.get("molecule_chembl_id__exact")
+                    or arguments.get("drug_chembl_id__exact")  # Feature-40A-01
+                )
+                # Feature-45A-05: when mol_id came from drug_chembl_id__exact (or other aliases),
+                # it is not yet mapped to drug_chembl_id in arguments, so _build_params
+                # still sends drug_chembl_id__exact=... as a raw API param that /mechanism.json
+                # doesn't recognize — causing all 7568 mechanisms to be returned.
+                # Fix: rebuild params after ensuring drug_chembl_id is set.
+                if mol_id and not arguments.get("drug_chembl_id"):
+                    arguments = dict(arguments)
+                    arguments["drug_chembl_id"] = mol_id
+                    params = self._build_params(arguments)
+
+                if not mol_id:
+                    # Feature-42A-01: auto-lookup ChEMBL ID by drug_name if provided
+                    drug_name = arguments.get("drug_name")
+                    if drug_name:
+                        mol_id = self._lookup_chembl_id_by_name(drug_name)
+                        if mol_id:
+                            arguments = dict(arguments)
+                            arguments["drug_chembl_id"] = mol_id
+                            params = self._build_params(arguments)
+                        else:
+                            return {
+                                "status": "error",
+                                "error": f"Drug '{drug_name}' not found in ChEMBL database. "
+                                "Try ChEMBL_search_molecules or ChEMBL_search_drugs to find the ChEMBL ID first.",
+                            }
+                    else:
+                        return {
+                            "status": "error",
+                            "error": "drug_chembl_id is required for ChEMBL_get_drug_mechanisms. "
+                            "Provide the ChEMBL ID (e.g., 'CHEMBL25' for aspirin) or drug_name "
+                            "for automatic lookup (e.g., 'trastuzumab', 'lapatinib'). "
+                            "Aliases accepted: drug_chembl_id, molecule_chembl_id, chembl_id.",
+                        }
+
+            # Feature-40B-03: ChEMBL_search_mechanisms — drug_name is not a valid ChEMBL
+            # API parameter; it is silently ignored, returning unrelated mechanisms.
+            # Feature-41B-01: query/pref_name__icontains is also silently ignored by
+            # /mechanism.json endpoint — catch it here and return a helpful error.
+            if tool_name == "ChEMBL_search_mechanisms":
+                # target_chembl_id is silently ignored by /mechanism.json
+                target_id = arguments.get("target_chembl_id")
+                if target_id:
+                    return {
+                        "status": "error",
+                        "error": f"target_chembl_id='{target_id}' is not supported for "
+                        "ChEMBL_search_mechanisms. The /mechanism.json endpoint ignores "
+                        "target-based filters. To find mechanisms for a target: "
+                        "(1) use ChEMBL_search_activities with target_chembl_id to find "
+                        "drugs acting on the target, then (2) use ChEMBL_get_drug_mechanisms "
+                        "with the drug_chembl_id. Alternatively, filter by "
+                        "mechanism_of_action__icontains (e.g., 'DPP4 inhibitor').",
+                    }
+
+                drug_name = arguments.get("drug_name")
+                query_name = arguments.get("query") or arguments.get("q")
+                if drug_name or query_name:
+                    bad_param = (
+                        f"drug_name='{drug_name}'"
+                        if drug_name
+                        else f"query='{query_name}'"
+                    )
+                    return {
+                        "status": "error",
+                        "error": f"{bad_param} is not supported for ChEMBL_search_mechanisms. "
+                        "The /mechanism.json endpoint ignores name-based filters. "
+                        "To search mechanisms by drug name: (1) find the ChEMBL ID with "
+                        "ChEMBL_search_molecules or ChEMBL_search_drugs, then (2) use "
+                        "drug_chembl_id (e.g., 'CHEMBL3137343' for pembrolizumab). "
+                        "Alternatively, filter by mechanism_of_action__contains (e.g., 'PD-1').",
+                    }
+
+            # Feature-36A-01: ChEMBL_get_molecule_targets — the /target.json endpoint
+            # does NOT support molecule_chembl_id__exact filtering (silently ignored).
+            # Correct approach: query /activity.json?molecule_chembl_id=X and
+            # deduplicate the target fields from the activity records.
+            if tool_name == "ChEMBL_get_molecule_targets":
+                mol_id = arguments.get("molecule_chembl_id__exact") or arguments.get(
+                    "molecule_chembl_id"
+                )
+                if mol_id:
+                    activity_url = self.base_url + "/activity.json"
+                    limit = arguments.get("limit", 500)
+                    act_params = {
+                        "molecule_chembl_id": mol_id,
+                        "limit": min(limit, 500),
+                        "format": "json",
+                        "only": "target_chembl_id,target_pref_name,target_organism,target_tax_id",
+                    }
+                    resp = request_with_retry(
+                        self.session,
+                        "GET",
+                        activity_url,
+                        params=act_params,
+                        timeout=self.timeout,
+                        max_attempts=3,
+                    )
+                    resp.raise_for_status()
+                    act_data = resp.json()
+                    activities = act_data.get("activities", [])
+                    # Deduplicate by target_chembl_id
+                    seen = set()
+                    targets = []
+                    for act in activities:
+                        tid = act.get("target_chembl_id")
+                        if tid and tid not in seen:
+                            seen.add(tid)
+                            targets.append(
+                                {
+                                    "target_chembl_id": tid,
+                                    "pref_name": act.get("target_pref_name"),
+                                    "organism": act.get("target_organism"),
+                                }
+                            )
+                    return {
+                        "status": "success",
+                        "data": {"targets": targets},
+                        "molecule_chembl_id": mol_id,
+                        "count": len(targets),
+                        "url": resp.url,
+                    }
+                return {
+                    "status": "error",
+                    "error": "molecule_chembl_id__exact or molecule_chembl_id is required",
+                }
+
+            # Check if this is an image endpoint
+            is_image_endpoint = (
+                "get_molecule_image" in tool_name.lower() or "/image/" in url
+            )
+
             response = request_with_retry(
                 self.session,
                 "GET",
@@ -142,6 +417,19 @@ class ChEMBLRESTTool(BaseTool):
                 backoff_seconds=0.5,
             )
             response.raise_for_status()
+
+            # Handle image endpoints differently
+            if is_image_endpoint:
+                content_type = response.headers.get("Content-Type", "")
+                if "image" in content_type or "svg" in content_type:
+                    # Return the image URL and content type for binary data
+                    return {
+                        "status": "success",
+                        "data": f"Image data available at URL (Content-Type: {content_type})",
+                        "url": response.url,
+                        "content_type": content_type,
+                        "image_size_bytes": len(response.content),
+                    }
 
             data = response.json()
 
@@ -232,7 +520,7 @@ class ChEMBLTool(BaseTool):
         max_results = arguments.get("max_results", 20)
 
         if not query:
-            return {"error": "`query` parameter is required."}
+            return {"status": "error", "error": "`query` parameter is required."}
         return self._search_similar_molecules(query, similarity_threshold, max_results)
 
     def get_chembl_id_by_name(self, compound_name):
@@ -246,9 +534,15 @@ class ChEMBLTool(BaseTool):
         response.raise_for_status()
         results = response.json().get("molecules", [])
         if not results or not isinstance(results, list):
-            return {"error": "No valid results found for the compound name."}
+            return {
+                "status": "error",
+                "error": "No valid results found for the compound name.",
+            }
         if not results:
-            return {"error": "No results found for the compound name."}
+            return {
+                "status": "error",
+                "error": "No results found for the compound name.",
+            }
         top_molecules = results[:3]  # Get the top 3 results
         chembl_ids = [
             molecule.get("molecule_chembl_id")
@@ -256,7 +550,10 @@ class ChEMBLTool(BaseTool):
             if molecule.get("molecule_chembl_id")
         ]
         if not chembl_ids:
-            return {"error": "No ChEMBL IDs found for the compound name."}
+            return {
+                "status": "error",
+                "error": "No ChEMBL IDs found for the compound name.",
+            }
         return {"chembl_ids": chembl_ids}
 
     def get_smiles_pref_name_by_chembl_id(self, query):
@@ -270,16 +567,23 @@ class ChEMBLTool(BaseTool):
             response.raise_for_status()
             molecule = response.json()
             if not molecule or not isinstance(molecule, dict):
-                return {"error": "No valid molecule found for the given ChEMBL ID."}
+                return {
+                    "status": "error",
+                    "error": "No valid molecule found for the given ChEMBL ID.",
+                }
             molecule_structures = molecule.get("molecule_structures")
             if not molecule_structures or not isinstance(molecule_structures, dict):
                 return {
-                    "error": "Molecule structures not found or invalid for the ChEMBL ID."
+                    "status": "error",
+                    "error": "Molecule structures not found or invalid for the ChEMBL ID.",
                 }
             smiles = molecule_structures.get("canonical_smiles")
             pref_name = molecule.get("pref_name")
             if not smiles:
-                return {"error": "SMILES not found for the given ChEMBL ID."}
+                return {
+                    "status": "error",
+                    "error": "SMILES not found for the given ChEMBL ID.",
+                }
             return {"smiles": smiles, "pref_name": pref_name}
         else:
             return None
@@ -294,7 +598,10 @@ class ChEMBLTool(BaseTool):
         response.raise_for_status()
         results = response.json().get("molecules", [])
         if not results or not isinstance(results, list):
-            return {"error": "No valid results found for the compound name."}
+            return {
+                "status": "error",
+                "error": "No valid results found for the compound name.",
+            }
         top_molecules = results[:5]
         output = []
         molecules_without_smiles = []
@@ -368,7 +675,7 @@ class ChEMBLTool(BaseTool):
                         f"For searching similar small molecules, consider using: "
                         f"PubChem_search_compounds_by_similarity (requires SMILES input)."
                     )
-            return {"error": error_msg}
+            return {"status": "error", "error": error_msg}
         return output
 
     def _search_similar_molecules(self, query, similarity_threshold, max_results):
@@ -389,7 +696,18 @@ class ChEMBLTool(BaseTool):
                 }
             )
 
-        # If not a ChEMBL ID, use get_chembl_smiles_pref_name_id_by_name to get info
+        # If not a ChEMBL ID, check if it's a SMILES string (contains structural chars)
+        _smiles_chars = set("=()[]@#+\\/%")
+        if (
+            len(smiles_info_list) == 0
+            and isinstance(query, str)
+            and any(c in query for c in _smiles_chars)
+        ):
+            smiles_info_list.append(
+                {"chembl_id": None, "smiles": query, "pref_name": None}
+            )
+
+        # Otherwise use get_chembl_smiles_pref_name_id_by_name to get info
         if len(smiles_info_list) == 0 and isinstance(query, str):
             results = self.get_chembl_smiles_pref_name_id_by_name(query)
             if isinstance(results, dict) and "error" in results:
@@ -418,6 +736,7 @@ class ChEMBLTool(BaseTool):
                             "Oligosaccharide",
                         ]:
                             return {
+                                "status": "error",
                                 "error": (
                                     f"The compound '{query}' was found in ChEMBL (ChEMBL ID: {chembl_id}) "
                                     f"but is a {molecule_type.lower()}, not a small molecule. "
@@ -429,18 +748,19 @@ class ChEMBLTool(BaseTool):
                                     f"BLAST_protein_search (for protein/antibody sequence similarity search, requires amino acid sequence), "
                                     f"or UniProt_search (for searching proteins in UniProt database). "
                                     f"For small molecule similarity search, use: PubChem_search_compounds_by_similarity (requires SMILES input)."
-                                )
+                                ),
                             }
                 except Exception:
                     pass
             return {
+                "status": "error",
                 "error": (
                     f"SMILES representation not found for the compound '{query}'. "
                     f"This tool requires SMILES structure for similarity search. "
                     f"If you have a SMILES string, you can use it directly as the query. "
                     f"Alternatively, consider using PubChem_search_compounds_by_similarity "
                     f"(requires SMILES input) for similarity search."
-                )
+                ),
             }
 
         results_list = []
@@ -450,7 +770,10 @@ class ChEMBLTool(BaseTool):
             chembl_id = info.get("chembl_id")
             mol = self.indigo.loadMolecule(smiles)
             if mol is None:
-                return {"error": "Failed to load molecule with Indigo."}
+                return {
+                    "status": "error",
+                    "error": "Failed to load molecule with Indigo.",
+                }
 
             encoded_smiles = quote(smiles)
             similarity_url = f"{self.base_url}/similarity/{encoded_smiles}/{similarity_threshold}.json?limit={max_results}"

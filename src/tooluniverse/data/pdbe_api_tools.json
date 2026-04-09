@@ -45,7 +45,8 @@
       {
         "pdb_id": "1CRN"
       }
-    ]
+    ],
+    "aliases": ["PDBe_get_summary"]
   },
   {
     "type": "PDBeAPIRESTTool",
@@ -62,7 +63,7 @@
       "required": ["pdb_id"]
     },
     "fields": {
-      "endpoint": "https://www.ebi.ac.uk/pdbe/api/pdb/entry/quality/{pdb_id}",
+      "endpoint": "https://www.ebi.ac.uk/pdbe/api/validation/summary_quality_scores/entry/{pdb_id}",
       "return_format": "JSON"
     },
     "return_schema": {
@@ -92,7 +93,10 @@
     },
     "test_examples": [
       {
-        "pdb_id": "1A2B"
+        "pdb_id": "1cbs"
+      },
+      {
+        "pdb_id": "4hhb"
       }
     ]
   },
@@ -160,31 +164,27 @@
       "return_format": "JSON"
     },
     "return_schema": {
-      "type": "object",
-      "properties": {
-        "status": {
-          "type": "string",
-          "description": "Status of the request"
-        },
-        "data": {
-          "type": "object",
-          "description": "Biological assembly information"
-        },
-        "url": {
-          "type": "string",
-          "description": "URL of the API request"
-        },
-        "count": {
-          "type": "integer",
-          "description": "Number of assembly entries returned"
-        },
-        "fallback_used": {
-          "type": "boolean",
-          "description": "Whether fallback to summary endpoint was used (only present if fallback occurred)"
-        },
-        "note": {
-          "type": "string",
-          "description": "Note about data source (only present if fallback was used)"
+      "type": "array",
+      "description": "List of biological assemblies for the PDB entry",
+      "items": {
+        "type": "object",
+        "properties": {
+          "assembly_id": {
+            "type": "string",
+            "description": "Assembly identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Assembly name (e.g., monomer, dimer)"
+          },
+          "form": {
+            "type": "string",
+            "description": "Assembly form (e.g., homo, hetero)"
+          },
+          "preferred": {
+            "type": "boolean",
+            "description": "Whether this is the preferred assembly"
+          }
         }
       }
     },

@@ -1,7 +1,7 @@
 """
 STRING_get_protein_interactions
 
-Query protein-protein interactions from the STRING database. STRING is a comprehensive database o...
+Alternative method to retrieve protein interactions from STRING (Search Tool for Retrieval of Int...
 """
 
 from typing import Any, Optional, Callable
@@ -20,7 +20,7 @@ def STRING_get_protein_interactions(
     validate: bool = True,
 ) -> dict[str, Any]:
     """
-    Query protein-protein interactions from the STRING database. STRING is a comprehensive database o...
+    Alternative method to retrieve protein interactions from STRING (Search Tool for Retrieval of Int...
 
     Parameters
     ----------
@@ -47,16 +47,22 @@ def STRING_get_protein_interactions(
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "protein_ids": protein_ids,
+            "species": species,
+            "confidence_score": confidence_score,
+            "limit": limit,
+            "network_type": network_type,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "STRING_get_protein_interactions",
-            "arguments": {
-                "protein_ids": protein_ids,
-                "species": species,
-                "confidence_score": confidence_score,
-                "limit": limit,
-                "network_type": network_type,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

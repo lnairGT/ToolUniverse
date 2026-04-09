@@ -17,7 +17,7 @@ def EuropePMC_get_references(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> Any:
     """
     Get references (bibliography) for an article from Europe PMC. References are articles cited by th...
 
@@ -40,19 +40,25 @@ def EuropePMC_get_references(
 
     Returns
     -------
-    dict[str, Any]
+    Any
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "source": source,
+            "article_id": article_id,
+            "page_size": page_size,
+            "page": page,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "EuropePMC_get_references",
-            "arguments": {
-                "source": source,
-                "article_id": article_id,
-                "page_size": page_size,
-                "page": page,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

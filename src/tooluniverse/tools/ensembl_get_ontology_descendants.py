@@ -15,7 +15,7 @@ def ensembl_get_ontology_descendants(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> list[Any]:
     """
     Get descendant terms for a GO (Gene Ontology) term. Returns child terms down the ontology hierarc...
 
@@ -34,14 +34,20 @@ def ensembl_get_ontology_descendants(
 
     Returns
     -------
-    dict[str, Any]
+    list[Any]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {"id": id, "closest_term": closest_term}.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "ensembl_get_ontology_descendants",
-            "arguments": {"id": id, "closest_term": closest_term},
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

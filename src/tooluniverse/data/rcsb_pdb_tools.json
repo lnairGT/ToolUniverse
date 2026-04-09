@@ -607,7 +607,7 @@
   },
   {
     "name": "get_mutation_annotations_by_pdb_id",
-    "description": "Retrieve mutation annotations for a given PDB structure.",
+    "description": "Retrieve mutation annotations for a given PDB structure. Returns mutation count, the pdbx_mutation flag (YES/NO), the details field (contains mutation identity like \"T790M\"), fragment description, and protein description. Note: if all returned fields are null, the structure has no annotated mutations in RCSB.",
     "label": [
       "Mutation",
       "Annotation",
@@ -634,13 +634,16 @@
         ]
       },
       "return_fields": [
-        "entity_poly.rcsb_mutation_count",
-        "rcsb_polymer_entity.pdbx_mutation"
+        "polymer_entities.entity_poly.rcsb_mutation_count",
+        "polymer_entities.rcsb_polymer_entity.pdbx_mutation",
+        "polymer_entities.rcsb_polymer_entity.details",
+        "polymer_entities.rcsb_polymer_entity.pdbx_fragment",
+        "polymer_entities.rcsb_polymer_entity.pdbx_description"
       ]
     },
     "test_examples": [
       {
-        "pdb_id": "1CRN"
+        "pdb_id": "2JIV"
       }
     ],
     "return_schema": {
@@ -741,7 +744,7 @@
     },
     "test_examples": [
       {
-        "pdb_id": "1CRN"
+        "pdb_id": "7BV2"
       }
     ],
     "return_schema": {
@@ -1367,7 +1370,7 @@
     },
     "test_examples": [
       {
-        "pdb_id": "1CRN"
+        "pdb_id": "1IEP"
       }
     ],
     "return_schema": {
@@ -1385,15 +1388,58 @@
                     "type": "string"
                   },
                   "nonpolymer_entities": {
-                    "type": "null"
-                  },
-                  "assemblies": {
-                    "type": "array",
+                    "type": ["array", "null"],
                     "items": {
                       "type": "object",
                       "properties": {
                         "nonpolymer_entity_instances": {
-                          "type": "null"
+                          "type": ["array", "null"],
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "rcsb_nonpolymer_instance_feature_summary": {
+                                "type": ["array", "null"],
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "comp_id": {"type": "string"}
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "assemblies": {
+                    "type": ["array", "null"],
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "nonpolymer_entity_instances": {
+                          "type": ["array", "null"],
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "nonpolymer_entity": {
+                                "type": "object",
+                                "properties": {
+                                  "nonpolymer_comp": {
+                                    "type": "object",
+                                    "properties": {
+                                      "rcsb_chem_comp_info": {
+                                        "type": "object",
+                                        "properties": {
+                                          "bond_count": {"type": "integer"}
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
                         }
                       }
                     }
@@ -1513,7 +1559,7 @@
     },
     "test_examples": [
       {
-        "entity_id": "1"
+        "entity_id": "1IEP_1"
       }
     ],
     "return_schema": {

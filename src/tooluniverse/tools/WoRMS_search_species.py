@@ -15,7 +15,7 @@ def WoRMS_search_species(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> list[Any]:
     """
     Search marine species in World Register of Marine Species
 
@@ -34,12 +34,17 @@ def WoRMS_search_species(
 
     Returns
     -------
-    dict[str, Any]
+    list[Any]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {k: v for k, v in {"query": query, "limit": limit}.items() if v is not None}
     return get_shared_client().run_one_function(
-        {"name": "WoRMS_search_species", "arguments": {"query": query, "limit": limit}},
+        {
+            "name": "WoRMS_search_species",
+            "arguments": _args,
+        },
         stream_callback=stream_callback,
         use_cache=use_cache,
         validate=validate,

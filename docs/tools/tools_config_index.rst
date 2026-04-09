@@ -1,7 +1,7 @@
 Available Tools
 ==========================
 
-ToolUniverse provides over 600 scientific tools organized into local and remote categories. This overview helps you discover and navigate the available tools for your research needs.
+ToolUniverse provides over 1000 scientific tools organized into local and remote categories. This overview helps you discover and navigate the available tools for your research needs.
 
 Tool Registry
 ---------------
@@ -33,7 +33,7 @@ Remote tools integrate external services, APIs, and specialized systems running 
    **Discover Available Tools:**
 
    * :doc:`../guide/listing_tools` - Browse tools by category and explore the full catalog
-   * :doc:`../tutorials/finding_tools` - Learn advanced search techniques and filters
+   * :doc:`../guide/finding_tools` - Learn advanced search techniques and filters
    * :doc:`../tools/remote_tools` - Set up remote tool integrations
    * :doc:`../guide/loading_tools` - Load and configure local tools
 

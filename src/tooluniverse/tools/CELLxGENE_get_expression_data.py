@@ -1,7 +1,7 @@
 """
 CELLxGENE_get_expression_data
 
-Query gene expression data from CELLxGENE Census as AnnData object summary. Filter cells and gene...
+Query gene expression data from CELLxGENE Census (50M+ cells, 60K+ genes). CRITICAL: At least one...
 """
 
 from typing import Any, Optional, Callable
@@ -20,9 +20,9 @@ def CELLxGENE_get_expression_data(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> Optional[dict[str, Any]]:
     """
-    Query gene expression data from CELLxGENE Census as AnnData object summary. Filter cells and gene...
+    Query gene expression data from CELLxGENE Census (50M+ cells, 60K+ genes). CRITICAL: At least one...
 
     Parameters
     ----------
@@ -31,9 +31,9 @@ def CELLxGENE_get_expression_data(
     organism : str
         Organism name
     obs_value_filter : str
-        Cell filter (e.g., 'tissue == "lung" and disease == "COVID-19"')
+        REQUIRED (or use var_value_filter) - Cell filter. Common values: tissue_gener...
     var_value_filter : str
-        Gene filter (e.g., 'feature_name in ["CD4", "CD8A"]')
+        REQUIRED (or use obs_value_filter) - Gene filter by symbol or Ensembl ID. Exa...
     obs_column_names : list[str]
         Cell metadata columns to include
     var_column_names : list[str]
@@ -49,22 +49,28 @@ def CELLxGENE_get_expression_data(
 
     Returns
     -------
-    dict[str, Any]
+    Optional[dict[str, Any]]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "operation": operation,
+            "organism": organism,
+            "obs_value_filter": obs_value_filter,
+            "var_value_filter": var_value_filter,
+            "obs_column_names": obs_column_names,
+            "var_column_names": var_column_names,
+            "census_version": census_version,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "CELLxGENE_get_expression_data",
-            "arguments": {
-                "operation": operation,
-                "organism": organism,
-                "obs_value_filter": obs_value_filter,
-                "var_value_filter": var_value_filter,
-                "obs_column_names": obs_column_names,
-                "var_column_names": var_column_names,
-                "census_version": census_version,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

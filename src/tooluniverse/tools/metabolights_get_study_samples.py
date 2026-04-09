@@ -14,7 +14,7 @@ def metabolights_get_study_samples(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> list[Any]:
     """
     Get all samples associated with a MetaboLights study. Returns sample metadata including sample na...
 
@@ -31,12 +31,17 @@ def metabolights_get_study_samples(
 
     Returns
     -------
-    dict[str, Any]
+    list[Any]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {k: v for k, v in {"study_id": study_id}.items() if v is not None}
     return get_shared_client().run_one_function(
-        {"name": "metabolights_get_study_samples", "arguments": {"study_id": study_id}},
+        {
+            "name": "metabolights_get_study_samples",
+            "arguments": _args,
+        },
         stream_callback=stream_callback,
         use_cache=use_cache,
         validate=validate,

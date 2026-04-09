@@ -17,7 +17,7 @@ def openalex_search_authors(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> Optional[dict[str, Any]]:
     """
     Search OpenAlex authors via the /authors endpoint. Use this to discover Author IDs (A...) and the...
 
@@ -40,19 +40,25 @@ def openalex_search_authors(
 
     Returns
     -------
-    dict[str, Any]
+    Optional[dict[str, Any]]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "search": search,
+            "per_page": per_page,
+            "page": page,
+            "mailto": mailto,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "openalex_search_authors",
-            "arguments": {
-                "search": search,
-                "per_page": per_page,
-                "page": page,
-                "mailto": mailto,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

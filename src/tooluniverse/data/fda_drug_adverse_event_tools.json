@@ -46,10 +46,9 @@
         "seriousnessdeath": {
           "type": "string",
           "enum": [
-            "Yes",
-            "No"
+            "Yes"
           ],
-          "description": "Optional: Filter for fatal outcomes. Omit this parameter if you don't want to filter by death."
+          "description": "Optional: Pass 'Yes' to filter for reports where death was an outcome. Omit this parameter to include all reports regardless of death outcome."
         },
         "reactionmeddraverse": {
           "type": "string",
@@ -94,14 +93,17 @@
         "medicinalproduct": "Aspirin",
         "patientsex": "Male",
         "patientagegroup": "Neonate",
-        "occurcountry": 1,
+        "occurcountry": "US",
         "serious": "Yes",
         "seriousnessdeath": "Yes",
         "reactionmeddraverse": "nausea"
       }
     ],
     "return_schema": {
-      "type": "object",
+      "anyOf": [
+        {"type": "array", "items": {"type": "object"}},
+        {"type": "object"}
+      ],
       "properties": {
         "error": {
           "type": "string"
@@ -338,12 +340,15 @@
       {
         "patientsex": "Male",
         "patientagegroup": "Neonate",
-        "occurcountry": 1,
+        "occurcountry": "US",
         "serious": "Yes"
       }
     ],
     "return_schema": {
-      "type": "object",
+      "anyOf": [
+        {"type": "array", "items": {"type": "object"}},
+        {"type": "object"}
+      ],
       "properties": {
         "error": {
           "type": "string"
@@ -715,11 +720,14 @@
         "medicinalproduct": "Aspirin",
         "patientsex": "Male",
         "patientagegroup": "Neonate",
-        "occurcountry": 1
+        "occurcountry": "US"
       }
     ],
     "return_schema": {
-      "type": "object",
+      "anyOf": [
+        {"type": "array", "items": {"type": "object"}},
+        {"type": "object"}
+      ],
       "properties": {
         "error": {
           "type": "string"
@@ -917,11 +925,14 @@
         "medicinalproduct": "Aspirin",
         "patientsex": "Male",
         "patientagegroup": "Neonate",
-        "occurcountry": 1
+        "occurcountry": "US"
       }
     ],
     "return_schema": {
-      "type": "object",
+      "anyOf": [
+        {"type": "array", "items": {"type": "object"}},
+        {"type": "object"}
+      ],
       "properties": {
         "error": {
           "type": "string"
@@ -1328,10 +1339,9 @@
         "seriousnessdeath": {
           "type": "string",
           "enum": [
-            "Yes",
-            "No"
+            "Yes"
           ],
-          "description": "Optional: Filter for fatal outcomes. Omit this parameter if you don't want to filter by death."
+          "description": "Optional: Pass 'Yes' to filter for reports where death was an outcome. Omit this parameter to include all reports regardless of death outcome."
         }
       },
       "required": [
@@ -1370,13 +1380,16 @@
         ],
         "patientsex": "Male",
         "patientagegroup": "Neonate",
-        "occurcountry": 1,
+        "occurcountry": "US",
         "serious": "Yes",
         "seriousnessdeath": "Yes"
       }
     ],
     "return_schema": {
-      "type": "object",
+      "anyOf": [
+        {"type": "array", "items": {"type": "object"}},
+        {"type": "object"}
+      ],
       "properties": {
         "error": {
           "type": "string"
@@ -1802,11 +1815,14 @@
         ],
         "patientsex": "Male",
         "patientagegroup": "Neonate",
-        "occurcountry": 1
+        "occurcountry": "US"
       }
     ],
     "return_schema": {
-      "type": "object",
+      "anyOf": [
+        {"type": "array", "items": {"type": "object"}},
+        {"type": "object"}
+      ],
       "properties": {
         "error": {
           "type": "string"
@@ -2017,11 +2033,14 @@
         ],
         "patientsex": "Male",
         "patientagegroup": "Neonate",
-        "occurcountry": 1
+        "occurcountry": "US"
       }
     ],
     "return_schema": {
-      "type": "object",
+      "anyOf": [
+        {"type": "array", "items": {"type": "object"}},
+        {"type": "object"}
+      ],
       "properties": {
         "error": {
           "type": "string"

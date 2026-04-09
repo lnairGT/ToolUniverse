@@ -17,7 +17,7 @@ def FAERS_count_additive_seriousness_classification(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> Any:
     """
     Quantify serious vs non-serious classifications across medicinal products. Only medicinalproducts...
 
@@ -40,19 +40,25 @@ def FAERS_count_additive_seriousness_classification(
 
     Returns
     -------
-    dict[str, Any]
+    Any
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "medicinalproducts": medicinalproducts,
+            "patientsex": patientsex,
+            "patientagegroup": patientagegroup,
+            "occurcountry": occurcountry,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "FAERS_count_additive_seriousness_classification",
-            "arguments": {
-                "medicinalproducts": medicinalproducts,
-                "patientsex": patientsex,
-                "patientagegroup": patientagegroup,
-                "occurcountry": occurcountry,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

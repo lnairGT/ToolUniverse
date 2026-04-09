@@ -13,7 +13,7 @@ def Crossref_list_types(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> Optional[list[Any]]:
     """
     List all publication types available in Crossref (e.g., journal-article, book-chapter, conference...
 
@@ -29,12 +29,17 @@ def Crossref_list_types(
 
     Returns
     -------
-    dict[str, Any]
+    Optional[list[Any]]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {k: v for k, v in {}.items() if v is not None}
     return get_shared_client().run_one_function(
-        {"name": "Crossref_list_types", "arguments": {}},
+        {
+            "name": "Crossref_list_types",
+            "arguments": _args,
+        },
         stream_callback=stream_callback,
         use_cache=use_cache,
         validate=validate,

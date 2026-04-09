@@ -57,16 +57,13 @@ class RCSBSearchTool(BaseTool):
         - Includes identity_cutoff (optional, 0-1)
         - Includes sequence_type ("protein")
         """
-        # Convert identity_cutoff to evalue_cutoff if needed
-        # Lower identity_cutoff means higher similarity requirement
-        # We use a reasonable evalue_cutoff based on identity
-        evalue_cutoff = 0.1  # Default evalue cutoff
+        # Map identity_cutoff to evalue_cutoff: higher identity requires stricter evalue
         if identity_cutoff > 0.9:
-            evalue_cutoff = 0.001  # High similarity
+            evalue_cutoff = 0.001
         elif identity_cutoff > 0.7:
-            evalue_cutoff = 0.01  # Medium-high similarity
+            evalue_cutoff = 0.01
         else:
-            evalue_cutoff = 0.1  # Lower similarity
+            evalue_cutoff = 0.1
 
         return {
             "query": {
@@ -122,6 +119,55 @@ class RCSBSearchTool(BaseTool):
                 "sort": [{"sort_by": "score", "direction": "desc"}],
             },
         }
+
+    def _enrich_text_results(self, results: list) -> list:
+        """Fetch title, resolution, and method for text search PDB IDs."""
+        if not results:
+            return results
+        pdb_ids = [r["pdb_id"] for r in results if r.get("pdb_id")]
+        if not pdb_ids:
+            return results
+        try:
+            # Use RCSB GraphQL API to batch-fetch metadata
+            graphql_url = "https://data.rcsb.org/graphql"
+            query_str = """
+            query($ids: [String!]!) {
+              entries(entry_ids: $ids) {
+                rcsb_id
+                struct { title }
+                rcsb_entry_info {
+                  resolution_combined
+                  experimental_method
+                }
+              }
+            }
+            """
+            resp = requests.post(
+                graphql_url,
+                json={"query": query_str, "variables": {"ids": pdb_ids}},
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return results
+            entries = resp.json().get("data", {}).get("entries", [])
+            metadata = {}
+            for entry in entries:
+                if not entry:
+                    continue
+                pdb_id = entry.get("rcsb_id", "")
+                info = entry.get("rcsb_entry_info") or {}
+                resolution = info.get("resolution_combined")
+                metadata[pdb_id] = {
+                    "title": (entry.get("struct") or {}).get("title"),
+                    "resolution": resolution[0] if resolution else None,
+                    "method": info.get("experimental_method"),
+                }
+            for r in results:
+                meta = metadata.get(r.get("pdb_id"), {})
+                r.update({k: v for k, v in meta.items() if v is not None})
+        except Exception:
+            pass  # Return results without metadata on failure
+        return results
 
     def _build_text_query(self, search_text: str, max_results: int) -> Dict[str, Any]:
         """
@@ -278,6 +324,7 @@ class RCSBSearchTool(BaseTool):
         # Validate parameters
         if not query:
             return {
+                "status": "error",
                 "error": (
                     "Missing required parameter: query. "
                     "Provide either a PDB ID (e.g., '1ABC'), "
@@ -291,6 +338,7 @@ class RCSBSearchTool(BaseTool):
             # Structure-based search using PDB ID
             if not self._validate_pdb_id(query):
                 return {
+                    "status": "error",
                     "error": (
                         f"Invalid PDB ID format: '{query}'. "
                         "PDB ID must be 4 alphanumeric characters "
@@ -307,6 +355,7 @@ class RCSBSearchTool(BaseTool):
             # Sequence-based search
             if not self._validate_sequence(query):
                 return {
+                    "status": "error",
                     "error": (
                         f"Invalid protein sequence: '{query[:50]}...'. "
                         "Sequence must be at least 10 amino acids long "
@@ -323,20 +372,13 @@ class RCSBSearchTool(BaseTool):
 
         elif search_type == "text":
             # Text-based search (by name, keyword, etc.)
-            if not query or not query.strip():
-                return {
-                    "error": (
-                        "Invalid search text. "
-                        "Provide a non-empty search term "
-                        "(e.g., drug name, protein name, keyword)."
-                    ),
-                }
-
-            api_query = self._build_text_query(query.strip(), max_results)
+            # Note: empty query is already rejected above
+            api_query = self._build_text_query(query, max_results)
             query_type = "text"
 
         else:
             return {
+                "status": "error",
                 "error": (
                     f"Invalid search_type: '{search_type}'. "
                     "Must be 'sequence', 'structure', or 'text'."
@@ -350,7 +392,7 @@ class RCSBSearchTool(BaseTool):
                 json=api_query,
                 headers={"Content-Type": "application/json"},
                 timeout=self.timeout,
-            )  # noqa: E501
+            )
             response.raise_for_status()
 
             # Handle HTTP 204 No Content (empty result set)
@@ -365,6 +407,7 @@ class RCSBSearchTool(BaseTool):
 
         except requests.exceptions.Timeout:
             return {
+                "status": "error",
                 "error": (
                     "Request timeout. The RCSB PDB Search API "
                     "did not respond in time. Please try again later."
@@ -385,6 +428,7 @@ class RCSBSearchTool(BaseTool):
 
             if e.response.status_code == 400:
                 return {
+                    "status": "error",
                     "error": (
                         f"Invalid request to RCSB PDB Search API: "
                         f"{error_detail}. "
@@ -406,9 +450,10 @@ class RCSBSearchTool(BaseTool):
                     "structure similarity search. "
                     "Please verify the PDB ID is correct."
                 )
-                return {"error": error_msg}
+                return {"status": "error", "error": error_msg}
             else:
                 return {
+                    "status": "error",
                     "error": (
                         f"RCSB PDB Search API error "
                         f"(HTTP {e.response.status_code}): {error_detail}"
@@ -416,12 +461,14 @@ class RCSBSearchTool(BaseTool):
                 }
         except requests.exceptions.RequestException as e:
             return {
+                "status": "error",
                 "error": (
                     f"Network error while connecting to RCSB PDB Search API: {str(e)}"
                 ),
             }
         except Exception as e:
             return {
+                "status": "error",
                 "error": f"Unexpected error during search: {str(e)}",
             }
 
@@ -444,15 +491,23 @@ class RCSBSearchTool(BaseTool):
                         f"similarity threshold >= {similarity_threshold}."
                     )
                 return {
-                    "query": query,
-                    "search_type": query_type,
-                    "similarity_threshold": (
-                        similarity_threshold if query_type != "text" else None
-                    ),
-                    "total_found": total_found,
-                    "results": [],
-                    "message": message,
+                    "status": "success",
+                    "data": {
+                        "query": query,
+                        "search_type": query_type,
+                        "similarity_threshold": (
+                            similarity_threshold if query_type != "text" else None
+                        ),
+                        "total_found": total_found,
+                        "results": [],
+                        "message": message,
+                    },
                 }
+
+            # Feature-79B-003: Enrich text search results with metadata
+            # (title, resolution, method) from RCSB data API
+            if query_type == "text":
+                results = self._enrich_text_results(results)
 
             result_dict = {
                 "query": query,
@@ -465,10 +520,11 @@ class RCSBSearchTool(BaseTool):
             if query_type != "text":
                 result_dict["similarity_threshold"] = similarity_threshold
 
-            return result_dict
+            return {"status": "success", "data": result_dict}
 
         except Exception as e:
             return {
+                "status": "error",
                 "error": f"Error parsing search results: {str(e)}",
                 "raw_response": str(response_data)[:500],
             }

@@ -76,26 +76,25 @@ class MGnifyStudiesTool:
             api_response = _http_get(
                 url, headers={"Accept": "application/json"}, timeout=timeout
             )
-            # Wrap API response to match schema: data.data should be array
             # API returns {"data": [...], "links": {...}, "meta": {...}}
-            # Schema expects {"data": {"data": [...]}}
+            # Extract the data array directly
             if isinstance(api_response, dict) and "data" in api_response:
-                wrapped_data = {"data": api_response.get("data", [])}
+                data_array = api_response.get("data", [])
             else:
                 # Fallback if response format is unexpected
-                wrapped_data = {
-                    "data": api_response if isinstance(api_response, list) else []
-                }
+                data_array = api_response if isinstance(api_response, list) else []
 
             return {
+                "status": "success",
                 "source": "MGnify",
                 "endpoint": "studies",
                 "query": query,
-                "data": wrapped_data,
+                "data": data_array,
                 "success": True,
             }
         except Exception as e:
             return {
+                "status": "error",
                 "error": str(e),
                 "source": "MGnify",
                 "endpoint": "studies",
@@ -154,26 +153,25 @@ class MGnifyAnalysesTool:
             api_response = _http_get(
                 url, headers={"Accept": "application/json"}, timeout=timeout
             )
-            # Wrap API response to match schema: data.data should be array
             # API returns {"data": [...], "links": {...}, "meta": {...}}
-            # Schema expects {"data": {"data": [...]}}
+            # Extract the data array directly
             if isinstance(api_response, dict) and "data" in api_response:
-                wrapped_data = {"data": api_response.get("data", [])}
+                data_array = api_response.get("data", [])
             else:
                 # Fallback if response format is unexpected
-                wrapped_data = {
-                    "data": api_response if isinstance(api_response, list) else []
-                }
+                data_array = api_response if isinstance(api_response, list) else []
 
             return {
+                "status": "success",
                 "source": "MGnify",
                 "endpoint": "analyses",
                 "query": query,
-                "data": wrapped_data,
+                "data": data_array,
                 "success": True,
             }
         except Exception as e:
             return {
+                "status": "error",
                 "error": str(e),
                 "source": "MGnify",
                 "endpoint": "analyses",

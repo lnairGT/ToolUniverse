@@ -15,7 +15,7 @@ def ebi_get_domain_fields(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> list[Any]:
     """
     Get list of available searchable fields for a specific EBI domain. Useful for understanding what ...
 
@@ -34,14 +34,18 @@ def ebi_get_domain_fields(
 
     Returns
     -------
-    dict[str, Any]
+    list[Any]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v for k, v in {"domain": domain, "format": format}.items() if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "ebi_get_domain_fields",
-            "arguments": {"domain": domain, "format": format},
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

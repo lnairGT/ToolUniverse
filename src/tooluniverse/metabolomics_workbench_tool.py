@@ -11,6 +11,7 @@ API Documentation: https://www.metabolomicsworkbench.org/tools/mw_rest.php
 
 import requests
 from typing import Dict, Any
+from urllib.parse import quote
 from .base_tool import BaseTool
 from .tool_registry import register_tool
 
@@ -41,6 +42,13 @@ class MetabolomicsWorkbenchTool(BaseTool):
 
     def run(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the Metabolomics Workbench API call."""
+        # Resolve compound_name/name aliases to input_value
+        if "input_value" not in arguments:
+            for alias in ("compound_name", "name"):
+                if alias in arguments:
+                    arguments["input_value"] = arguments.pop(alias)
+                    break
+
         context = self.context
 
         try:
@@ -55,7 +63,7 @@ class MetabolomicsWorkbenchTool(BaseTool):
             elif context == "exactmass":
                 return self._search_exactmass(arguments)
             else:
-                return {"error": f"Unknown context: {context}"}
+                return {"status": "error", "error": f"Unknown context: {context}"}
         except Exception as e:
             raise self.handle_error(e)
 
@@ -74,29 +82,65 @@ class MetabolomicsWorkbenchTool(BaseTool):
             # The API sometimes returns "null" as a string or an empty string with 200 OK
             raw_text = response.text.strip()
             if not raw_text or raw_text.lower() == "null" or raw_text == '""':
-                return {"status": "success", "data": [], "message": "No results found"}
+                return {
+                    "status": "success",
+                    "data": [],
+                    "message": "No results found. RefMet requires exact metabolite names "
+                    "(e.g., 'Cholic acid' not 'bile acid', 'Cer(d18:1/16:0)' not 'ceramide'). "
+                    "Try a specific compound name or use ChEBI_search for class-level terms.",
+                }
 
             try:
                 data = response.json()
                 # Check for API-level error status
                 if isinstance(data, dict) and data.get("status") == "error":
                     return {
-                        "error": data.get("message", "API returned an error status")
+                        "status": "error",
+                        "error": data.get("message", "API returned an error status"),
                     }
-                return data
+
+                # Convert exactmass from string to number if present
+                data = self._normalize_numeric_fields(data)
+
+                # Feature-79A-001: Add guidance when RefMet returns empty array
+                if isinstance(data, list) and len(data) == 0:
+                    return {
+                        "status": "success",
+                        "data": [],
+                        "message": "No results found. RefMet requires exact metabolite names "
+                        "(e.g., 'Cholic acid' not 'bile acid', 'Cer(d18:1/16:0)' not 'ceramide'). "
+                        "Try a specific compound name or use ChEBI_search for class-level terms.",
+                    }
+
+                return {"status": "success", "data": data}
             except ValueError:
                 # Return as text if not JSON (though we requested JSON)
-                return {"data": response.text}
+                return {"status": "success", "data": response.text}
 
         except requests.RequestException as e:
             raise self.handle_error(e)
+
+    def _normalize_numeric_fields(self, data: Any) -> Any:
+        """Convert numeric string fields to actual numbers."""
+        if isinstance(data, dict):
+            # Convert exactmass from string to float
+            if "exactmass" in data and isinstance(data["exactmass"], str):
+                try:
+                    data["exactmass"] = float(data["exactmass"])
+                except (ValueError, TypeError):
+                    pass
+            # Recursively process nested dicts
+            return {k: self._normalize_numeric_fields(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self._normalize_numeric_fields(item) for item in data]
+        return data
 
     def _query_study(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Query study metadata."""
         study_id = arguments.get("study_id", "")
         output_item = arguments.get("output_item", "summary")
         if not study_id:
-            return {"error": "study_id parameter is required"}
+            return {"status": "error", "error": "study_id parameter is required"}
         return self._make_request(f"study/study_id/{study_id}/{output_item}")
 
     def _query_compound(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -105,35 +149,37 @@ class MetabolomicsWorkbenchTool(BaseTool):
         input_value = arguments.get("input_value", "")
         output_item = arguments.get("output_item", "all")
         if not input_value:
-            return {"error": "input_value parameter is required"}
+            return {"status": "error", "error": "input_value parameter is required"}
         return self._make_request(f"compound/{input_item}/{input_value}/{output_item}")
 
     def _query_refmet(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Query RefMet nomenclature."""
-        input_item = arguments.get("input_item", "name")
+        input_item = self.tool_config.get("fields", {}).get("input_item", "name")
         input_value = arguments.get("input_value", "")
         output_item = arguments.get("output_item", "all")
         if not input_value:
-            return {"error": "input_value parameter is required"}
+            return {"status": "error", "error": "input_value parameter is required"}
         return self._make_request(f"refmet/{input_item}/{input_value}/{output_item}")
 
     def _search_moverz(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Search by m/z value."""
+        """Search by m/z value. Requires database as first URL path segment."""
         mz_value = arguments.get("mz_value")
         adduct = arguments.get("adduct", "M+H")
         tolerance = arguments.get("tolerance", 0.1)
-        output_item = arguments.get("output_item", "all")
+        database = arguments.get("database", "MB")  # MB, LIPIDS, or REFMET
         if mz_value is None:
-            return {"error": "mz_value parameter is required"}
+            return {"status": "error", "error": "mz_value parameter is required"}
+        # URL-encode adduct: '+' in 'M+H' must be %2B or the server drops the connection
+        encoded_adduct = quote(str(adduct), safe="")
         return self._make_request(
-            f"moverz/{mz_value}/{adduct}/{tolerance}/{output_item}"
+            f"moverz/{database}/{mz_value}/{encoded_adduct}/{tolerance}"
         )
 
     def _search_exactmass(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Search by exact mass."""
+        """Search by exact mass using moverz endpoint with neutral adduct."""
         mass_value = arguments.get("mass_value")
         tolerance = arguments.get("tolerance", 0.1)
-        output_item = arguments.get("output_item", "all")
         if mass_value is None:
-            return {"error": "mass_value parameter is required"}
-        return self._make_request(f"exactmass/{mass_value}/{tolerance}/{output_item}")
+            return {"status": "error", "error": "mass_value parameter is required"}
+        # exactmass endpoint is non-functional; use moverz/REFMET with neutral adduct M
+        return self._make_request(f"moverz/REFMET/{mass_value}/M/{tolerance}")

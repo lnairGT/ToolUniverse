@@ -1,7 +1,7 @@
 """
 ebi_search_with_facets
 
-Search EBI domain with faceted filtering. Facets allow filtering results by categories. IMPORTANT...
+Search EBI domain with faceted filtering and returns facet information. Use facetcount to request...
 """
 
 from typing import Any, Optional, Callable
@@ -21,7 +21,7 @@ def ebi_search_with_facets(
     validate: bool = True,
 ) -> dict[str, Any]:
     """
-    Search EBI domain with faceted filtering. Facets allow filtering results by categories. IMPORTANT...
+    Search EBI domain with faceted filtering and returns facet information. Use facetcount to request...
 
     Parameters
     ----------
@@ -30,9 +30,9 @@ def ebi_search_with_facets(
     query : str
         Search query string
     facets : str
-        Comma-separated list of facet names to include (e.g., 'organism,database'). I...
+        Optional filter for results using facet values in format 'FACET_NAME:value' (...
     facetcount : int
-        Number of facet values to return per facet (default: 10)
+        Number of facet values to return per facet category (default: 10). Set to 0 t...
     size : int
         Number of results to return (default: 10)
     format : str
@@ -50,17 +50,23 @@ def ebi_search_with_facets(
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "domain": domain,
+            "query": query,
+            "facets": facets,
+            "facetcount": facetcount,
+            "size": size,
+            "format": format,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "ebi_search_with_facets",
-            "arguments": {
-                "domain": domain,
-                "query": query,
-                "facets": facets,
-                "facetcount": facetcount,
-                "size": size,
-                "format": format,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

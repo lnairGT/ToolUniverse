@@ -16,7 +16,7 @@ def ReMap_get_transcription_factor_binding(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> Any:
     """
     Get transcription factor binding sites from ReMap database for specific genes and cell types
 
@@ -37,18 +37,24 @@ def ReMap_get_transcription_factor_binding(
 
     Returns
     -------
-    dict[str, Any]
+    Any
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "gene_name": gene_name,
+            "cell_type": cell_type,
+            "limit": limit,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "ReMap_get_transcription_factor_binding",
-            "arguments": {
-                "gene_name": gene_name,
-                "cell_type": cell_type,
-                "limit": limit,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

@@ -19,7 +19,7 @@ def FAERS_count_additive_adverse_reactions(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> Any:
     """
     Aggregate adverse reaction counts across specified medicinal products. Only medicinalproducts is ...
 
@@ -36,7 +36,7 @@ def FAERS_count_additive_adverse_reactions(
     serious : str
         Optional: Filter by event seriousness. Omit this parameter if you don't want ...
     seriousnessdeath : str
-        Optional: Filter for fatal outcomes. Omit this parameter if you don't want to...
+        Optional: Pass 'Yes' to filter for reports where death was an outcome. Omit t...
     stream_callback : Callable, optional
         Callback for streaming output
     use_cache : bool, default False
@@ -46,21 +46,27 @@ def FAERS_count_additive_adverse_reactions(
 
     Returns
     -------
-    dict[str, Any]
+    Any
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "medicinalproducts": medicinalproducts,
+            "patientsex": patientsex,
+            "patientagegroup": patientagegroup,
+            "occurcountry": occurcountry,
+            "serious": serious,
+            "seriousnessdeath": seriousnessdeath,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "FAERS_count_additive_adverse_reactions",
-            "arguments": {
-                "medicinalproducts": medicinalproducts,
-                "patientsex": patientsex,
-                "patientagegroup": patientagegroup,
-                "occurcountry": occurcountry,
-                "serious": serious,
-                "seriousnessdeath": seriousnessdeath,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

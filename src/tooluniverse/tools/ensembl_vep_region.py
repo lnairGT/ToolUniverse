@@ -28,7 +28,7 @@ def ensembl_vep_region(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> list[Any]:
     """
     Variant Effect Predictor (VEP) for genomic variants. Predicts functional consequences of variants...
 
@@ -73,30 +73,36 @@ def ensembl_vep_region(
 
     Returns
     -------
-    dict[str, Any]
+    list[Any]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "species": species,
+            "region": region,
+            "allele": allele,
+            "AncestralAllele": AncestralAllele,
+            "Blosum62": Blosum62,
+            "CADD": CADD,
+            "Conservation": Conservation,
+            "DisGeNET": DisGeNET,
+            "GeneSplicer": GeneSplicer,
+            "GO": GO,
+            "LoF": LoF,
+            "MaxEntScan": MaxEntScan,
+            "Phenotypes": Phenotypes,
+            "SIFT": SIFT,
+            "PolyPhen": PolyPhen,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "ensembl_vep_region",
-            "arguments": {
-                "species": species,
-                "region": region,
-                "allele": allele,
-                "AncestralAllele": AncestralAllele,
-                "Blosum62": Blosum62,
-                "CADD": CADD,
-                "Conservation": Conservation,
-                "DisGeNET": DisGeNET,
-                "GeneSplicer": GeneSplicer,
-                "GO": GO,
-                "LoF": LoF,
-                "MaxEntScan": MaxEntScan,
-                "Phenotypes": Phenotypes,
-                "SIFT": SIFT,
-                "PolyPhen": PolyPhen,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

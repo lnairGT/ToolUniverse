@@ -14,7 +14,7 @@ def EMDB_get_imaging_info(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> Optional[dict[str, Any]]:
     """
     Get electron microscopy imaging parameters for an EMDB entry including microscope model, detector...
 
@@ -31,12 +31,17 @@ def EMDB_get_imaging_info(
 
     Returns
     -------
-    dict[str, Any]
+    Optional[dict[str, Any]]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {k: v for k, v in {"emdb_id": emdb_id}.items() if v is not None}
     return get_shared_client().run_one_function(
-        {"name": "EMDB_get_imaging_info", "arguments": {"emdb_id": emdb_id}},
+        {
+            "name": "EMDB_get_imaging_info",
+            "arguments": _args,
+        },
         stream_callback=stream_callback,
         use_cache=use_cache,
         validate=validate,

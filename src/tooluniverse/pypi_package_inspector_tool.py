@@ -73,7 +73,7 @@ class PyPIPackageInspector(BaseTool):
             )
 
             if response.status_code == 404:
-                return {"error": "Package not found on PyPI"}
+                return {"status": "error", "error": "Package not found on PyPI"}
 
             response.raise_for_status()
             data = response.json()
@@ -158,9 +158,9 @@ class PyPIPackageInspector(BaseTool):
             }
 
         except requests.exceptions.RequestException as e:
-            return {"error": f"PyPI API error: {str(e)}"}
+            return {"status": "error", "error": f"PyPI API error: {str(e)}"}
         except Exception as e:
-            return {"error": f"Unexpected error: {str(e)}"}
+            return {"status": "error", "error": f"Unexpected error: {str(e)}"}
 
     def _get_download_stats(self, package_name: str) -> Dict[str, Any]:
         """Fetch download statistics from pypistats.org"""
@@ -199,7 +199,7 @@ class PyPIPackageInspector(BaseTool):
             # Expected format: https://github.com/owner/repo
             parts = github_url.rstrip("/").split("/")
             if len(parts) < 2:
-                return {"error": "Invalid GitHub URL format"}
+                return {"status": "error", "error": "Invalid GitHub URL format"}
 
             repo_name = parts[-1]
             owner = parts[-2]
@@ -213,7 +213,7 @@ class PyPIPackageInspector(BaseTool):
             )
 
             if response.status_code == 404:
-                return {"error": "GitHub repository not found"}
+                return {"status": "error", "error": "GitHub repository not found"}
 
             response.raise_for_status()
             data = response.json()
@@ -253,9 +253,9 @@ class PyPIPackageInspector(BaseTool):
             }
 
         except requests.exceptions.RequestException as e:
-            return {"error": f"GitHub API error: {str(e)}"}
+            return {"status": "error", "error": f"GitHub API error: {str(e)}"}
         except Exception as e:
-            return {"error": f"Unexpected error: {str(e)}"}
+            return {"status": "error", "error": f"Unexpected error: {str(e)}"}
 
     def _calculate_quality_scores(
         self, pypi_data: Dict, downloads: Dict, github_data: Dict
@@ -527,7 +527,10 @@ class PyPIPackageInspector(BaseTool):
         try:
             package_name = arguments.get("package_name", "").strip()
             if not package_name:
-                return {"status": "error", "error": "package_name is required"}
+                return {
+                    "status": "error",
+                    "data": {"error": "package_name is required"},
+                }
 
             include_github = arguments.get("include_github", True)
             include_downloads = arguments.get("include_downloads", True)
@@ -541,8 +544,10 @@ class PyPIPackageInspector(BaseTool):
             if "error" in pypi_data:
                 return {
                     "status": "error",
-                    "error": pypi_data["error"],
-                    "package_name": package_name,
+                    "data": {
+                        "error": pypi_data["error"],
+                        "package_name": package_name,
+                    },
                 }
 
             # Step 2: Get download statistics
@@ -567,7 +572,6 @@ class PyPIPackageInspector(BaseTool):
 
             # Compile comprehensive report
             result = {
-                "status": "success",
                 "package_name": package_name,
                 "pypi_metadata": pypi_data,
                 "download_stats": downloads,
@@ -582,11 +586,13 @@ class PyPIPackageInspector(BaseTool):
                 f"✅ Inspection complete - Overall score: {scores['overall_score']}/100"
             )
 
-            return result
+            return {"status": "success", "data": result}
 
         except Exception as e:
             return {
                 "status": "error",
-                "error": str(e),
-                "package_name": arguments.get("package_name", ""),
+                "data": {
+                    "error": str(e),
+                    "package_name": arguments.get("package_name", ""),
+                },
             }

@@ -19,7 +19,7 @@ def iedb_get_epitope_mhc(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> list[Any]:
     """
     Given an epitope `structure_id`, get linked MHC restriction association rows (IEDB Query API). Re...
 
@@ -46,21 +46,27 @@ def iedb_get_epitope_mhc(
 
     Returns
     -------
-    dict[str, Any]
+    list[Any]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "structure_id": structure_id,
+            "limit": limit,
+            "offset": offset,
+            "order": order,
+            "select": select,
+            "filters": filters,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "iedb_get_epitope_mhc",
-            "arguments": {
-                "structure_id": structure_id,
-                "limit": limit,
-                "offset": offset,
-                "order": order,
-                "select": select,
-                "filters": filters,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

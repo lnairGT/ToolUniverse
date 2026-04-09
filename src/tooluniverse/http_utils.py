@@ -7,13 +7,21 @@ without changing individual tool return formats.
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Mapping, Optional, Sequence, Union
 import time
+import random
 
 import requests
 
 
 RetryStatuses = Sequence[int]
+
+
+def _jittered_sleep(backoff_seconds: float, attempt: int) -> None:
+    """Sleep with exponential backoff and a small random jitter."""
+    sleep_s = backoff_seconds * (2**attempt)
+    sleep_s += random.uniform(0.0, backoff_seconds * 0.25)
+    time.sleep(sleep_s)
 
 
 def request_with_retry(
@@ -26,23 +34,23 @@ def request_with_retry(
     json: Any = None,
     data: Any = None,
     timeout: Optional[float] = None,
-    retry_statuses: RetryStatuses = (502, 503, 504),
+    retry_statuses: RetryStatuses = (408, 429, 500, 502, 503, 504),
     max_attempts: int = 3,
     backoff_seconds: float = 0.5,
 ) -> requests.Response:
     """
     Make an HTTP request with small exponential backoff on transient failures.
 
-    Retries:
-    - timeouts / connection errors
-    - HTTP status codes in retry_statuses
+    Retries on:
+    - Timeouts and connection errors
+    - HTTP status codes listed in *retry_statuses*
 
-    Notes:
-    - Does NOT call raise_for_status(); callers can decide how to handle non-2xx.
-    - Keeps behavior conservative (defaults: 3 attempts, 0.5s backoff).
+    Does NOT call ``raise_for_status()``; callers decide how to handle non-2xx.
+    Defaults: 3 attempts, 0.5 s initial backoff.
     """
     m = (method or "GET").upper()
     attempts = max(1, int(max_attempts))
+    retry_status_set = set(retry_statuses)
     last_exc: Optional[BaseException] = None
 
     for attempt in range(attempts):
@@ -57,27 +65,25 @@ def request_with_retry(
                 timeout=timeout,
             )
 
-            if resp.status_code in set(retry_statuses) and attempt < attempts - 1:
-                sleep_s = backoff_seconds * (2**attempt)
-                time.sleep(sleep_s)
+            if resp.status_code in retry_status_set and attempt < attempts - 1:
+                retry_after_header = resp.headers.get("Retry-After")
+                if retry_after_header:
+                    try:
+                        sleep_s = max(0.0, float(retry_after_header))
+                    except (TypeError, ValueError):
+                        sleep_s = backoff_seconds * (2**attempt)
+                    sleep_s += random.uniform(0.0, backoff_seconds * 0.25)
+                    time.sleep(sleep_s)
+                else:
+                    _jittered_sleep(backoff_seconds, attempt)
                 continue
 
             return resp
 
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-            last_exc = e
-            if attempt < attempts - 1:
-                sleep_s = backoff_seconds * (2**attempt)
-                time.sleep(sleep_s)
-                continue
-            raise
-
         except requests.exceptions.RequestException as e:
-            # Retry only when it looks like a transient network failure
             last_exc = e
             if attempt < attempts - 1:
-                sleep_s = backoff_seconds * (2**attempt)
-                time.sleep(sleep_s)
+                _jittered_sleep(backoff_seconds, attempt)
                 continue
             raise
 

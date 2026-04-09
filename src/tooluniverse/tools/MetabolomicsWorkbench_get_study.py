@@ -15,7 +15,7 @@ def MetabolomicsWorkbench_get_study(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> Any:
     """
     Get metadata and information about a metabolomics study by its study ID. Returns study summary in...
 
@@ -34,14 +34,20 @@ def MetabolomicsWorkbench_get_study(
 
     Returns
     -------
-    dict[str, Any]
+    Any
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {"study_id": study_id, "output_item": output_item}.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "MetabolomicsWorkbench_get_study",
-            "arguments": {"study_id": study_id, "output_item": output_item},
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

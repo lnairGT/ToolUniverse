@@ -10,14 +10,14 @@ from ._shared_client import get_shared_client
 
 def ensembl_get_sequence(
     id: str,
-    type: Optional[str] = "genomic",
+    type_: Optional[str] = "genomic",
     species: Optional[str] = None,
     multiple_sequences: Optional[bool] = True,
     *,
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> Any:
     """
     Get DNA or protein sequence for a gene, transcript, or genomic region. Returns sequence in JSON f...
 
@@ -25,7 +25,7 @@ def ensembl_get_sequence(
     ----------
     id : str
         Ensembl gene/transcript ID (e.g., 'ENSG00000139618' or 'ENST00000380152')
-    type : str
+    type_ : str
         Sequence type: 'genomic' (genomic DNA), 'cds' (coding sequence), 'cdna' (cDNA...
     species : str
         Species name (optional, defaults to human)
@@ -40,19 +40,25 @@ def ensembl_get_sequence(
 
     Returns
     -------
-    dict[str, Any]
+    Any
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "id": id,
+            "type": type_,
+            "species": species,
+            "multiple_sequences": multiple_sequences,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "ensembl_get_sequence",
-            "arguments": {
-                "id": id,
-                "type": type,
-                "species": species,
-                "multiple_sequences": multiple_sequences,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

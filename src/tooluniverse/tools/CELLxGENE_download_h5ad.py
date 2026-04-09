@@ -17,7 +17,7 @@ def CELLxGENE_download_h5ad(
     stream_callback: Optional[Callable[[str], None]] = None,
     use_cache: bool = False,
     validate: bool = True,
-) -> dict[str, Any]:
+) -> Optional[dict[str, Any]]:
     """
     Download original H5AD (HDF5-based AnnData) files from CELLxGENE datasets or get their URIs. Acce...
 
@@ -40,19 +40,25 @@ def CELLxGENE_download_h5ad(
 
     Returns
     -------
-    dict[str, Any]
+    Optional[dict[str, Any]]
     """
     # Handle mutable defaults to avoid B006 linting error
 
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {
+        k: v
+        for k, v in {
+            "operation": operation,
+            "dataset_id": dataset_id,
+            "output_path": output_path,
+            "census_version": census_version,
+        }.items()
+        if v is not None
+    }
     return get_shared_client().run_one_function(
         {
             "name": "CELLxGENE_download_h5ad",
-            "arguments": {
-                "operation": operation,
-                "dataset_id": dataset_id,
-                "output_path": output_path,
-                "census_version": census_version,
-            },
+            "arguments": _args,
         },
         stream_callback=stream_callback,
         use_cache=use_cache,

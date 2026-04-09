@@ -1,15 +1,64 @@
 #!/usr/bin/env python3
 """Minimal tools generator - one tool, one file."""
 
+import keyword
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 
 
-def json_type_to_python(json_type: str) -> str:
-    """Convert JSON type to Python type."""
+def sanitize_param_name(name: str) -> str:
+    """Convert an API parameter name to a valid Python identifier.
+
+    Handles dots (query.cond -> query_cond), hyphens (from-date -> from_date),
+    and Python reserved keywords (for -> for_, in -> in_).
+    """
+    sanitized = re.sub(r"[.\-]", "_", name)
+    if keyword.iskeyword(sanitized) or keyword.issoftkeyword(sanitized):
+        sanitized = sanitized + "_"
+    return sanitized
+
+
+def json_type_to_python(json_type: str | list) -> str:
+    """Convert JSON type to Python type.
+
+    Args:
+        json_type: JSON type as string or list of types (e.g., ["array", "null"])
+
+    Returns:
+        Python type annotation
+    """
+    # Handle list of types (union types)
+    if isinstance(json_type, list):
+        # Filter out null types and convert to Python types
+        types = []
+        has_null = "null" in json_type
+        for t in json_type:
+            if t == "null":
+                continue
+            py_type = {
+                "string": "str",
+                "integer": "int",
+                "number": "float",
+                "boolean": "bool",
+                "array": "list[Any]",
+                "object": "dict[str, Any]",
+            }.get(t)
+            if py_type and py_type not in types:
+                types.append(py_type)
+
+        if not types:
+            return "Any"
+        elif len(types) == 1:
+            return f"Optional[{types[0]}]" if has_null else types[0]
+        else:
+            # Multiple non-null types - return the most general
+            return "Any"
+
+    # Handle single type string
     return {
         "string": "str",
         "integer": "int",
@@ -18,6 +67,36 @@ def json_type_to_python(json_type: str) -> str:
         "array": "list[Any]",
         "object": "dict[str, Any]",
     }.get(json_type, "Any")
+
+
+def _deduplicate_types(types: list) -> str:
+    """Join a list of Python type strings with '|', removing duplicates while preserving order."""
+    if not types:
+        return "Any"
+    if len(types) == 1:
+        return types[0]
+    seen = set()
+    unique = []
+    for t in types:
+        if t not in seen:
+            seen.add(t)
+            unique.append(t)
+    return " | ".join(unique)
+
+
+def _resolve_single_type(type_name: str, schema_context: Dict[str, Any] = None) -> str:
+    """Convert a single JSON schema type to a Python type string.
+
+    For 'array' types, inspects schema_context['items'] to determine element type.
+    """
+    if type_name == "string":
+        return "str"
+    if type_name == "array":
+        items = (schema_context or {}).get("items", {})
+        if items.get("type") == "string":
+            return "list[str]"
+        return "list[Any]"
+    return json_type_to_python(type_name)
 
 
 def prop_to_python_type(prop: Dict[str, Any]) -> str:
@@ -31,73 +110,23 @@ def prop_to_python_type(prop: Dict[str, Any]) -> str:
     """
     # Handle oneOf schemas (e.g., string or array)
     if "oneOf" in prop:
-        types = []
-        for one_of_item in prop["oneOf"]:
-            item_type = one_of_item.get("type")
-            if item_type == "string":
-                types.append("str")
-            elif item_type == "array":
-                # Check if it's an array of strings
-                items = one_of_item.get("items", {})
-                if items.get("type") == "string":
-                    types.append("list[str]")
-                else:
-                    types.append("list[Any]")
-            elif item_type:
-                types.append(json_type_to_python(item_type))
-
-        if len(types) == 1:
-            return types[0]
-        elif len(types) > 1:
-            # Remove duplicates while preserving order
-            seen = set()
-            unique_types = []
-            for t in types:
-                if t not in seen:
-                    seen.add(t)
-                    unique_types.append(t)
-            return " | ".join(unique_types)
+        types = [
+            _resolve_single_type(item.get("type", ""), item)
+            for item in prop["oneOf"]
+            if item.get("type")
+        ]
+        return _deduplicate_types(types)
 
     # Fall back to regular type handling
     json_type = prop.get("type", "string")
 
     # Handle when type is a list (e.g., ["string", "array"])
     if isinstance(json_type, list):
-        types = []
-        for item_type in json_type:
-            if item_type == "string":
-                types.append("str")
-            elif item_type == "array":
-                # Check if it's an array of strings
-                items = prop.get("items", {})
-                if items.get("type") == "string":
-                    types.append("list[str]")
-                else:
-                    types.append("list[Any]")
-            elif item_type:
-                types.append(json_type_to_python(item_type))
-
-        if len(types) == 1:
-            return types[0]
-        elif len(types) > 1:
-            # Remove duplicates while preserving order
-            seen = set()
-            unique_types = []
-            for t in types:
-                if t not in seen:
-                    seen.add(t)
-                    unique_types.append(t)
-            return " | ".join(unique_types)
-        else:
-            return "Any"
+        types = [_resolve_single_type(t, prop) for t in json_type if t]
+        return _deduplicate_types(types)
 
     if json_type == "array":
-        # Check if it's an array of a specific type
-        items = prop.get("items", {})
-        if items.get("type") == "string":
-            return "list[str]"
-        else:
-            return "list[Any]"
+        return _resolve_single_type("array", prop)
 
     return json_type_to_python(json_type)
 
@@ -133,16 +162,18 @@ def validate_generated_code(
         required = schema.get("required", []) or []
 
         for param_name in required:
-            # Check if parameter appears in function signature
-            if f"{param_name}:" not in content:
+            # Check if parameter appears in function signature (use sanitized name)
+            py_param_name = sanitize_param_name(param_name)
+            if f"{py_param_name}:" not in content:
                 issues.append(
                     f"Required parameter '{param_name}' missing from function signature"
                 )
 
         # Check that all parameters in config appear in generated code
         for param_name in properties.keys():
-            # Parameter should appear either in signature or in kwargs
-            if f'"{param_name}"' not in content and f"{param_name}:" not in content:
+            py_param_name = sanitize_param_name(param_name)
+            # Parameter should appear either in signature (sanitized) or in kwargs (original)
+            if f'"{param_name}"' not in content and f"{py_param_name}:" not in content:
                 issues.append(f"Parameter '{param_name}' missing from generated code")
 
     except Exception as e:
@@ -179,33 +210,36 @@ def generate_tool_file(
         desc = prop.get("description", "")
         # Escape backslashes to avoid Unicode escape errors in docstrings
         desc = desc.replace("\\", "\\\\")
+        # Sanitize parameter name to be a valid Python identifier
+        py_name = sanitize_param_name(name)
 
         if name in required:
-            required_params.append(f"{name}: {py_type}")
+            required_params.append(f"{py_name}: {py_type}")
         else:
             default = prop.get("default")
             if default is not None:
                 # Handle mutable defaults to avoid B006 linting error
                 if isinstance(default, (list, dict)):
                     # Use None as default and handle in function body
-                    optional_params.append(f"{name}: Optional[{py_type}] = None")
+                    optional_params.append(f"{py_name}: Optional[{py_type}] = None")
                     mutable_defaults_code.append(
                         ("    if {n} is None:\n        {n} = {d}").format(
-                            n=name, d=repr(default)
+                            n=py_name, d=repr(default)
                         )
                     )
                 else:
                     optional_params.append(
-                        f"{name}: Optional[{py_type}] = {repr(default)}"
+                        f"{py_name}: Optional[{py_type}] = {repr(default)}"
                     )
             else:
-                optional_params.append(f"{name}: Optional[{py_type}] = None")
+                optional_params.append(f"{py_name}: Optional[{py_type}] = None")
 
-        kwargs.append(f'"{name}": {name}')
+        # Use original name as the API key, but sanitized py_name as the variable
+        kwargs.append(f'"{name}": {py_name}')
         # Wrap long descriptions
         if len(desc) > 80:
             desc = desc[:77] + "..."
-        doc_params.append(f"    {name} : {py_type}\n        {desc}")
+        doc_params.append(f"    {py_name} : {py_type}\n        {desc}")
 
     # Combine required and optional parameters
     params = required_params + optional_params
@@ -260,12 +294,14 @@ def {tool_name}(
     """
     # Handle mutable defaults to avoid B006 linting error
 {mutable_defaults_str}
+    # Strip None values so optional parameters don't trigger schema validation errors
+    _args = {{k: v for k, v in {{
+        {kwargs_str}
+    }}.items() if v is not None}}
     return get_shared_client().run_one_function(
         {{
             "name": "{tool_name}",
-            "arguments": {{
-                {kwargs_str}
-            }}
+            "arguments": _args,
         }},
         stream_callback=stream_callback,
         use_cache=use_cache,
@@ -536,6 +572,7 @@ def main(
     format_enabled: Optional[bool] = None,
     force_regenerate: bool = False,
     verbose: bool = False,
+    output_dir: Optional[Path] = None,
 ) -> None:
     """Generate tools and format the generated files if enabled.
 
@@ -544,6 +581,9 @@ def main(
                        (skip when set to "1").
         force_regenerate: If True, regenerate all tools regardless of changes
         verbose: If True, print detailed change information
+        output_dir: Directory to write wrapper files into.  When None the
+                    installed package's own ``tools/`` sub-directory is used
+                    (``Path(__file__).parent / "tools"``).
     """
     from tooluniverse import ToolUniverse
     from .build_optimizer import cleanup_orphaned_files, get_changed_tools
@@ -553,12 +593,40 @@ def main(
     tu = ToolUniverse()
     tu.load_tools()
 
-    output = Path("src/tooluniverse/tools")
+    output = Path(output_dir) if output_dir is not None else Path(__file__).parent / "tools"
     output.mkdir(parents=True, exist_ok=True)
+    print(f"   Output → {output}")
 
-    # Cleanup orphaned files
-    current_tool_names = set(tu.all_tool_dict.keys())
-    cleaned_count = cleanup_orphaned_files(output, current_tool_names)
+    # Cleanup orphaned files.
+    # Use ALL tool names from built-in JSON configs (not just those that passed
+    # API key filtering) so that wrappers for tools like BRENDA, NvidiaNIM, OMIM,
+    # and DisGeNET are never deleted simply because the required API keys are absent
+    # in the current environment.
+    # Workspace and plugin tools are intentionally excluded: they should not have
+    # wrappers in the installed package's tools/ directory.
+    from .utils import read_json_list
+    from .default_config import default_tool_files as _default_tool_files
+
+    all_config_tool_names: set = set()
+    for _path in _default_tool_files.values():
+        try:
+            for _tool in read_json_list(_path):
+                if "name" in _tool:
+                    all_config_tool_names.add(_tool["name"])
+        except Exception:
+            pass
+
+    # Only generate wrappers for built-in tools.  Workspace and plugin tools
+    # are loaded at runtime from their own directories; writing their wrappers
+    # into the installed package would pollute the package and be wiped on
+    # the next `pip install`.
+    builtin_tool_dict = {
+        name: cfg
+        for name, cfg in tu.all_tool_dict.items()
+        if name in all_config_tool_names
+    }
+
+    cleaned_count = cleanup_orphaned_files(output, all_config_tool_names)
     if cleaned_count > 0:
         print(f"🧹 Removed {cleaned_count} orphaned tool files")
 
@@ -571,7 +639,7 @@ def main(
     verbose = verbose or (os.getenv("TOOLUNIVERSE_VERBOSE") == "1")
 
     new_tools, changed_tools, unchanged_tools, change_details = get_changed_tools(
-        tu.all_tool_dict,
+        builtin_tool_dict,
         metadata_file,
         force_regenerate=force_regenerate,
         verbose=verbose,
@@ -579,7 +647,7 @@ def main(
 
     # Check for missing files - tools that exist in config but not as files
     missing_files = []
-    for tool_name in tu.all_tool_dict.keys():
+    for tool_name in builtin_tool_dict.keys():
         tool_file = output / f"{tool_name}.py"
         if not tool_file.exists():
             if tool_name not in new_tools and tool_name not in changed_tools:
@@ -612,7 +680,7 @@ def main(
                     print(f"    ... and {len(changed_tools) - 20} more")
 
         validation_errors = []
-        for i, (tool_name, tool_config) in enumerate(tu.all_tool_dict.items(), 1):
+        for i, (tool_name, tool_config) in enumerate(builtin_tool_dict.items(), 1):
             if tool_name in new_tools or tool_name in changed_tools:
                 path = generate_tool_file(tool_name, tool_config, output)
                 generated_paths.append(str(path))
@@ -627,7 +695,7 @@ def main(
                             print(f"      - {issue}")
 
             if i % 50 == 0:
-                print(f"  Processed {i}/{len(tu.all_tool_dict)} tools...")
+                print(f"  Processed {i}/{len(builtin_tool_dict)} tools...")
 
         if validation_errors:
             print(f"\n⚠️  Found {len(validation_errors)} validation issue(s):")
@@ -639,11 +707,15 @@ def main(
         print("✨ No changes detected, skipping tool generation")
         print(f"  📊 Status: {len(unchanged_tools)} tools unchanged")
 
-    # Always regenerate __init__.py to include all tools
-    init_path = generate_init(list(tu.all_tool_dict.keys()), output)
-    generated_paths.append(str(init_path))
+    # Regenerate __init__.py only when writing to the built-in package directory.
+    # For a user-specified output_dir (e.g. .tooluniverse/coding_api/) the
+    # __init__.py in that directory is never executed by Python — the installed
+    # package's __init__.py already extends __path__ to find wrapper files there.
+    if output_dir is None:
+        init_path = generate_init(list(builtin_tool_dict.keys()), output)
+        generated_paths.append(str(init_path))
 
-    # Always ensure _shared_client.py exists
+    # Always ensure _shared_client.py exists (wrappers import it at call time)
     shared_client_path = output / "_shared_client.py"
     if not shared_client_path.exists():
         _create_shared_client(shared_client_path)
